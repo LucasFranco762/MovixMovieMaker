@@ -1,0 +1,10 @@
+# Dependências Python do Movie Maker (instaladas via pip)
+# PyQt6: licença GPL v3 / comercial (Riverbank). Ver LICENCAS.md.
+PyQt6>=6.5
+
+# O MLT (módulo Python "mlt7") NÃO é instalável via pip no Windows.
+# Veja docs/INSTALACAO_MLT_WINDOWS.md.
+# O FFmpeg/FFprobe deve estar no PATH ou em MOVIEMAKER_FFMPEG_DIR.
+
+# Somente desenvolvimento (opcional; os testes também rodam com unittest):
+# pytest>=8

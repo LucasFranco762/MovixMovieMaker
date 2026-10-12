@@ -1,0 +1,10 @@
+[project]
+name = "moviemaker"
+version = "0.1.0"
+description = "Editor de vídeo desktop offline (Python, PyQt6, MLT, FFmpeg)"
+requires-python = ">=3.10"
+dependencies = ["PyQt6>=6.5"]
+
+[tool.pytest.ini_options]
+testpaths = ["testes"]
+pythonpath = ["."]

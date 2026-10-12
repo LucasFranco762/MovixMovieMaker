@@ -1,0 +1,58 @@
+RELATÓRIO DE IMPLEMENTAÇÃO — MOVIE MAKER (estado em 2026-10-11)
+=================================================================
+Escopo desta rodada: Etapa 1 (fundação + prova de conceito MLT/FFmpeg).
+Ambiente de desenvolvimento: Linux (container). Alvo: Windows. Nada abaixo foi
+executado no Windows.
+
+1. O QUE EXISTE (código implementado, ~4,8 mil linhas)
+-----------------------------------------------------
+core/            constantes, configuracoes (persistência local), eventos, excecoes,
+                 logging_config, layouts, tempo (frames com Fraction), controlador
+projetos/        modelos, salvamento (escrita atômica + versões), gerenciamento, recuperacao
+editor/          clipes, faixas, selecao, comandos (histórico desfazer/refazer)
+multimidia/      motor_base, motor_ffmpeg, motor_mlt, metadados
+interface/       janela_principal, cabecalho, menu_lateral, painel_ferramentas,
+                 painel_propriedades, player, timeline, gerenciador_layouts, estilos, tarefas
+ferramentas/     prova_conceito.py (10 passos do REQ-004 6.1, para rodar no Windows)
+docs/            INSTALACAO_MLT_WINDOWS.md ; LICENCAS.md
+
+Parte deste código (interface, timeline, comandos de edição) é de uma sessão
+anterior e vai além da Etapa 1. Foi preservada, não reescrita.
+
+2. TESTADO (execução real, Linux, unittest)
+-------------------------------------------
+Comando: python3 -m unittest discover -s testes -t .
+Resultado em 2026-10-11: 58 testes, todos OK (0,9 s).
+Cobrem: tempo por frames, configurações e layouts, modelo/serialização/salvamento
+de projetos, comandos de edição, controlador, metadados/FFmpeg.
+Observação: um teste de salvamento imprime um traceback esperado (destino é um
+diretório) e passa; é o caminho de erro sendo exercitado.
+pytest não pôde ser instalado (sem acesso ao PyPI neste ambiente); os testes
+usam unittest e rodam sem dependências extras.
+
+3. NÃO TESTADO / NÃO VALIDADO
+-----------------------------
+- Toda a interface PyQt6: PyQt6 não está instalado aqui; o código de interface
+  nunca foi executado nesta sessão (nem o main.py).
+- MLT: bindings (mlt7) ausentes. motor_mlt.py nunca rodou com MLT real.
+- Reprodução, transição, composição com áudio e exportação via MLT: não validados.
+- Qualquer comportamento no Windows 10/11.
+- Critérios de aceitação da seção 28: nenhum verificado.
+
+4. PROVA DE CONCEITO (REQ-004 6.1)
+----------------------------------
+Rodada aqui apenas para conferir o comportamento do script: passo 1 FALHOU
+(PyQt6 e mlt ausentes; FFmpeg 6.1.1 encontrado), passos 2-10 NAO_EXECUTADO.
+É o resultado esperado e honesto neste ambiente. A prova real depende de o
+usuário rodar no Windows (ver PENDENCIAS_CODEX.txt).
+
+5. DEPENDÊNCIAS
+---------------
+PyQt6>=6.5 (pip), MLT com bindings Python (build manual no Windows, ver docs),
+FFmpeg/FFprobe no PATH ou em MOVIEMAKER_FFMPEG_DIR. Licenças: LICENCAS.md
+(registro inicial, não é parecer jurídico).
+
+6. DOCUMENTAÇÃO AINDA AUSENTE (item 29 do prompt)
+-------------------------------------------------
+README.md, ARQUITETURA.md e REQUISITOS.md não foram escritos; ficam para o fim do
+desenvolvimento, conforme o prompt.

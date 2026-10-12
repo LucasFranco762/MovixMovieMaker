@@ -1,0 +1,35 @@
+PENDÊNCIAS — MOVIE MAKER (2026-10-11)
+=====================================
+
+BLOQUEIO Nº 1 (precisa do usuário, no Windows)
+----------------------------------------------
+Obter o módulo Python do MLT (mlt7) funcionando. Não existe wheel no pip para
+Windows. Siga docs/INSTALACAO_MLT_WINDOWS.md (rota MSYS2 / build com SWIG_PYTHON=ON).
+Essas instruções vêm de pesquisa e não foram verificadas por quem as escreveu.
+
+Depois, na pasta MovieMaker, com o ambiente ativo:
+    pip install PyQt6
+    python ferramentas\prova_conceito.py --saida C:\temp\poc --reproduzir-audio
+Envie relatorio_poc.txt / relatorio_poc.json. Sem esse resultado, não construir
+recursos avançados sobre o motor (regra do prompt, seção 25).
+
+Decisão em aberto: o Python do MSYS2 pode ser necessário (ABI MinGW x MSVC), o que
+muda a instalação do PyQt6. Registrar o que for escolhido.
+
+NÃO VALIDADO
+------------
+- Interface PyQt6 inteira e main.py (nunca executados).
+- motor_mlt.py (reprodução, transição, áudio, exportação).
+- Fluxo de aceitação da seção 28.
+
+AUSENTE
+-------
+- README.md, ARQUITETURA.md, REQUISITOS.md.
+- Etapas 3-6 só existem parcialmente (há timeline, comandos e layouts; biblioteca de
+  mídias, exportação, transições, efeitos, texto, áudio avançado: não verificados).
+- REQ-016 (cache/proxies): adiado por decisão do prompt.
+
+PRIORIDADE
+----------
+1) Rodar a prova de conceito no Windows. 2) Corrigir o que ela apontar.
+3) Só então validar a interface e seguir para a Etapa 3.
