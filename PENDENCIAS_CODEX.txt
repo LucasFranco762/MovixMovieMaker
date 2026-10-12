@@ -1,4 +1,4 @@
-PENDÊNCIAS — MOVIE MAKER (2026-10-11)
+PENDÊNCIAS — MOVIX MOVIE MAKER (2026-10-11)
 =====================================
 
 BLOQUEIO Nº 1 (precisa do usuário, no Windows)
@@ -7,7 +7,7 @@ Obter o módulo Python do MLT (mlt7) funcionando. Não existe wheel no pip para
 Windows. Siga docs/INSTALACAO_MLT_WINDOWS.md (rota MSYS2 / build com SWIG_PYTHON=ON).
 Essas instruções vêm de pesquisa e não foram verificadas por quem as escreveu.
 
-Depois, na pasta MovieMaker, com o ambiente ativo:
+Depois, na pasta MovixMovieMaker, com o ambiente ativo:
     pip install PyQt6
     python ferramentas\prova_conceito.py --saida C:\temp\poc --reproduzir-audio
 Envie relatorio_poc.txt / relatorio_poc.json. Sem esse resultado, não construir

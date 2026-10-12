@@ -1,4 +1,4 @@
-RELATÓRIO DE IMPLEMENTAÇÃO — MOVIE MAKER (estado em 2026-10-11)
+RELATÓRIO DE IMPLEMENTAÇÃO — MOVIX MOVIE MAKER (estado em 2026-10-11)
 =================================================================
 Escopo desta rodada: Etapa 1 (fundação + prova de conceito MLT/FFmpeg).
 Ambiente de desenvolvimento: Linux (container). Alvo: Windows. Nada abaixo foi

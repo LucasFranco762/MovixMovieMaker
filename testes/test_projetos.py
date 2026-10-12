@@ -5,12 +5,12 @@ import unittest
 from pathlib import Path
 
 from core.configuracoes import ArmazenamentoJson, Configuracoes
-from core.constantes import MAX_VERSOES_HISTORICO, TIPO_VIDEO
+from core.constantes import MAX_VERSOES_HISTORICO, TIPO_VIDEO, TRANSICAO_DISSOLVER
 from core.excecoes import ErroSalvamento, ProjetoIncompativelError, ProjetoInvalidoError
 from editor.clipes import criar_clipe
 from projetos import recuperacao
 from projetos.gerenciamento import GerenciadorProjetos
-from projetos.modelos import MidiaRef, Projeto
+from projetos.modelos import MidiaRef, Projeto, Transicao
 from projetos.salvamento import carregar_projeto, listar_versoes, salvar_projeto
 
 
@@ -51,6 +51,42 @@ class TesteSerializacao(unittest.TestCase):
 
     def test_duracao_total(self):
         self.assertEqual(projeto_exemplo().duracao_frames, 310)
+
+    def test_mixagem_e_volumes_sao_persistidos(self):
+        p = projeto_exemplo()
+        p.mixagem_audio.volume_original = 0.25
+        p.mixagem_audio.volume_adicionado = 1.4
+        p.faixas[0].volume = 0.8
+        p.faixas[0].clipes[0].volume = 0.6
+        q = Projeto.de_dict(json.loads(json.dumps(p.para_dict())))
+        self.assertEqual((q.mixagem_audio.volume_original, q.mixagem_audio.volume_adicionado),
+                         (0.25, 1.4))
+        self.assertEqual((q.faixas[0].volume, q.faixas[0].clipes[0].volume), (0.8, 0.6))
+
+    def test_transicao_e_persistida(self):
+        p = projeto_exemplo()
+        primeiro = p.faixas[0].clipes[0]
+        segundo = criar_clipe(p.midias["m1"], primeiro.fim)
+        p.faixas[0].clipes.append(segundo)
+        p.transicoes.append(Transicao(
+            "t1", p.faixas[0].id, primeiro.id, segundo.id, TRANSICAO_DISSOLVER, 25))
+        q = Projeto.de_dict(json.loads(json.dumps(p.para_dict())))
+        self.assertEqual(q.transicoes, p.transicoes)
+
+    def test_projeto_versao_1_migra_com_mixagem_padrao(self):
+        dados = projeto_exemplo().para_dict()
+        dados["versao_formato"] = 1
+        dados.pop("mixagem_audio")
+        dados.pop("transicoes")
+        for faixa in dados["faixas"]:
+            faixa.pop("volume")
+            for clipe in faixa["clipes"]:
+                clipe.pop("volume")
+        migrado = Projeto.de_dict(dados)
+        self.assertEqual(migrado.versao_formato, 3)
+        self.assertEqual((migrado.mixagem_audio.volume_original,
+                          migrado.mixagem_audio.volume_adicionado), (1.0, 1.0))
+        self.assertEqual(migrado.faixas[0].clipes[0].volume, 1.0)
 
 
 class TesteSalvamento(unittest.TestCase):

@@ -30,7 +30,7 @@ from interface.menu_lateral import MenuLateral
 from interface.painel_ferramentas import PainelFerramentas
 from interface.painel_propriedades import PainelPropriedades
 from interface.player import Player
-from interface.tarefas import TarefaAnaliseMidias
+from interface.tarefas import TarefaAnaliseMidias, TarefaExportacao
 from interface.timeline import Timeline
 from projetos import recuperacao
 
@@ -58,6 +58,7 @@ class JanelaPrincipal(QMainWindow):
         self.c = controlador
         self.config = controlador.config
         self._tarefas: list[TarefaAnaliseMidias] = []
+        self._tarefa_exportacao: TarefaExportacao | None = None
         self._erros_importacao: list[str] = []
         self._modo_tela_cheia: str | None = None
         self._estado_antes_tc: dict = {}
@@ -135,15 +136,25 @@ class JanelaPrincipal(QMainWindow):
 
     def _conectar(self) -> None:
         self.cabecalho.acao.connect(self._acao_cabecalho)
-        self.cabecalho.habilitar("exportar", False, "Exportação será implementada na Etapa 3 (ainda não disponível)")
         self.menu.categoria_clicada.connect(self._ao_clicar_categoria)
         self.painel.recolher_solicitado.connect(lambda: self._fechar_painel())
         self.painel.midias.importar_solicitado.connect(self.importar_midias)
         self.painel.midias.adicionar_solicitado.connect(self._adicionar_midia)
+        self.painel.transicoes.aplicar_solicitado.connect(
+            lambda tipo, duracao: self._tentar(lambda: self.c.aplicar_transicao(tipo, duracao)))
+        self.painel.transicoes.remover_solicitado.connect(
+            lambda transicao_id: self._tentar(lambda: self.c.remover_transicao(transicao_id)))
+        self.painel.audio.importar_solicitado.connect(self._importar_audio)
+        self.painel.audio.mixagem_alterada.connect(self.c.configurar_mixagem_audio)
+        self.painel.audio.gravacao_concluida.connect(
+            lambda caminho: self._iniciar_analise_midias([caminho], adicionar_na_timeline=True))
+        self.painel.audio.erro.connect(self._mostrar_erro)
         self.painel.ajustes.layout_escolhido.connect(self._trocar_layout)
         self.painel.ajustes.inatividade_alterada.connect(self._alterar_inatividade)
         self.propriedades.nome_alterado.connect(lambda i, n: self._tentar(lambda: self.c.alterar_clipe(i, nome=n)))
         self.propriedades.cor_alterada.connect(lambda i, cor: self._tentar(lambda: self.c.alterar_clipe(i, cor=cor or None)))
+        self.propriedades.volume_alterado.connect(
+            lambda i, volume: self._tentar(lambda: self.c.alterar_clipe(i, volume=volume)))
         self.timeline.erro.connect(self._mostrar_erro)
         self.timeline.recolhida_alterada.connect(self.layouts.definir_timeline_recolhida)
         self.timeline.propriedades_solicitadas.connect(self._abrir_propriedades)
@@ -156,6 +167,12 @@ class JanelaPrincipal(QMainWindow):
         e.assinar(MIDIAS_ALTERADAS, lambda: self.painel.midias.atualizar(self.c.projeto))
         e.assinar(PROJETO_ALTERADO, lambda: self.painel.midias.atualizar(self.c.projeto))
         e.assinar(SELECAO_ALTERADA, self._ao_selecao)
+        e.assinar(PROJETO_ALTERADO, self._atualizar_audio)
+        e.assinar(PROJETO_CARREGADO, self._atualizar_audio)
+        e.assinar(PROJETO_ALTERADO, self._atualizar_transicoes)
+        e.assinar(PROJETO_CARREGADO, self._atualizar_transicoes)
+        self._atualizar_audio()
+        self._atualizar_transicoes()
 
     def _criar_atalhos(self) -> None:
         def atalho(seq: str, fn) -> None:
@@ -198,6 +215,12 @@ class JanelaPrincipal(QMainWindow):
         self.cabecalho.definir_nome_projeto(g.caminho.stem if g.caminho else g.projeto.nome, g.modificado)
         self.cabecalho.habilitar("desfazer", self.c.historico.pode_desfazer())
         self.cabecalho.habilitar("refazer", self.c.historico.pode_refazer())
+        motor_pronto = self.c.motor is not None and self.c.motor.disponivel()
+        self.cabecalho.habilitar(
+            "exportar", motor_pronto and self.c.projeto.duracao_frames > 0
+            and self._tarefa_exportacao is None,
+            "Exportar o vídeo com a mixagem de áudio" if motor_pronto
+            else "A exportação requer o motor MLT")
         self.setWindowTitle(f"{g.caminho.stem if g.caminho else g.projeto.nome}{'*' if g.modificado else ''} — {NOME_APLICATIVO}")
 
     # ---- projeto ------------------------------------------------------------------------------------
@@ -328,13 +351,39 @@ class JanelaPrincipal(QMainWindow):
         if not arquivos:
             return
         self.config.definir("diretorios.ultima_importacao", str(Path(arquivos[0]).parent))
+        self._iniciar_analise_midias(arquivos)
+
+    def _iniciar_analise_midias(self, arquivos: list[str], adicionar_na_timeline: bool = False) -> None:
+        if not arquivos:
+            return
+        if self.c.ffmpeg is None:
+            self._mostrar_erro("FFmpeg ausente: não é possível analisar o áudio.")
+            return
         tarefa = TarefaAnaliseMidias(self.c.ffmpeg, arquivos, self.c.projeto.config.fps, self)
-        tarefa.midia_pronta.connect(self.c.registrar_midia)
+        tarefa.midia_pronta.connect(
+            lambda midia, auto=adicionar_na_timeline: self._registrar_midia_analisada(midia, auto))
         tarefa.falha.connect(self._erros_importacao.append)
         tarefa.finished.connect(lambda t=tarefa: self._fim_importacao(t))
         self._tarefas.append(tarefa)
         self.statusBar().showMessage(f"Analisando {len(arquivos)} arquivo(s)…")
         tarefa.start()
+
+    def _registrar_midia_analisada(self, midia, adicionar_na_timeline: bool) -> None:
+        self.c.registrar_midia(midia)
+        if adicionar_na_timeline:
+            self._tentar(lambda: self.c.adicionar_midia_na_timeline(
+                midia.id, criar_faixa_se_necessario=True))
+
+    def _importar_audio(self) -> None:
+        if self.c.ffmpeg is None:
+            QMessageBox.warning(self, "FFmpeg ausente", "O FFmpeg é necessário para importar áudio.")
+            return
+        inicio = self.config.obter("diretorios.ultima_importacao") or str(Path.home())
+        filtro = "Arquivos de áudio ({})".format(" ".join(f"*{e}" for e in EXTENSOES_AUDIO))
+        arquivos, _ = QFileDialog.getOpenFileNames(self, "Adicionar áudio", inicio, filtro)
+        if arquivos:
+            self.config.definir("diretorios.ultima_importacao", str(Path(arquivos[0]).parent))
+            self._iniciar_analise_midias(arquivos, adicionar_na_timeline=True)
 
     def _fim_importacao(self, tarefa: TarefaAnaliseMidias) -> None:
         self._tarefas.remove(tarefa)
@@ -348,6 +397,14 @@ class JanelaPrincipal(QMainWindow):
 
     def _adicionar_midia(self, midia_id: str) -> None:
         self._tentar(lambda: self.c.adicionar_midia_na_timeline(midia_id))
+
+    def _atualizar_audio(self) -> None:
+        mixagem = self.c.projeto.mixagem_audio
+        self.painel.audio.definir_mixagem(
+            mixagem.volume_original, mixagem.volume_adicionado)
+
+    def _atualizar_transicoes(self) -> None:
+        self.painel.transicoes.atualizar(self.c.projeto)
 
     # ---- painéis ---------------------------------------------------------------------------------------------
     def _sincronizar_menu_com_layout(self) -> None:
@@ -400,8 +457,45 @@ class JanelaPrincipal(QMainWindow):
             "desfazer": self.c.desfazer,
             "refazer": self.c.refazer,
             "configuracoes": lambda: self._ao_clicar_categoria("ajustes"),
-            "exportar": lambda: self._mostrar_erro("A exportação será implementada na Etapa 3."),
+            "exportar": self.exportar_video,
         }[id_]()
+
+    def exportar_video(self) -> None:
+        if self._tarefa_exportacao is not None:
+            return
+        if self.c.motor is None or not self.c.motor.disponivel():
+            QMessageBox.warning(self, "Exportação indisponível", "A exportação requer o motor MLT.")
+            return
+        inicio = self.config.obter("diretorios.ultima_exportacao") or str(Path.home())
+        sugestao = str(Path(inicio) / f"{self.c.projeto.nome}.mp4")
+        destino, _ = QFileDialog.getSaveFileName(self, "Exportar vídeo", sugestao, "Vídeo MP4 (*.mp4)")
+        if not destino:
+            return
+        if not destino.lower().endswith(".mp4"):
+            destino += ".mp4"
+        self.config.definir("diretorios.ultima_exportacao", str(Path(destino).parent))
+        self.player.pausar()
+        opcoes = {"vcodec": "libx264", "acodec": "aac", "preset": "medium", "crf": 18,
+                   "ar": self.c.projeto.config.taxa_amostragem,
+                   "ac": self.c.projeto.config.canais}
+        tarefa = TarefaExportacao(self.c.motor, destino, opcoes, self)
+        tarefa.sucesso.connect(self._exportacao_concluida)
+        tarefa.falha.connect(self._exportacao_falhou)
+        tarefa.finished.connect(lambda: tarefa.deleteLater())
+        self._tarefa_exportacao = tarefa
+        self.statusBar().showMessage("Exportando vídeo e mixando o áudio…")
+        self._atualizar_cabecalho()
+        tarefa.start()
+
+    def _exportacao_concluida(self, destino: str) -> None:
+        self._tarefa_exportacao = None
+        self.statusBar().showMessage(f"Vídeo exportado para {destino}", 8000)
+        self._atualizar_cabecalho()
+
+    def _exportacao_falhou(self, mensagem: str) -> None:
+        self._tarefa_exportacao = None
+        QMessageBox.critical(self, "Falha na exportação", mensagem)
+        self._atualizar_cabecalho()
 
     # ---- tela cheia (19.13) ------------------------------------------------------------------------------------------
     def alternar_tela_cheia(self, modo: str) -> None:
@@ -455,7 +549,7 @@ class JanelaPrincipal(QMainWindow):
 
     # ---- janela -----------------------------------------------------------------------------------------------------------
     def mostrar(self) -> None:
-        self.show()
+        self.showMaximized()
         self.layouts.reaplicar_estado()
         QTimer.singleShot(200, self.verificar_recuperacao_inicial)
 
@@ -479,6 +573,12 @@ class JanelaPrincipal(QMainWindow):
         for t in list(self._tarefas):
             t.requestInterruption()
             t.wait(3000)
+        self.painel.audio.parar_gravacao()
+        if self._tarefa_exportacao is not None and self._tarefa_exportacao.isRunning():
+            QMessageBox.information(
+                self, "Exportação em andamento", "Aguarde a exportação terminar antes de fechar o programa.")
+            ev.ignore()
+            return
         try:
             if self._modo_tela_cheia is None:
                 self.config.definir("interface.geometria_janela", bytes(self.saveGeometry().toHex()).decode("ascii"))

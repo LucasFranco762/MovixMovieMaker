@@ -13,6 +13,7 @@ from PyQt6.QtCore import QThread, pyqtSignal
 
 from multimidia.metadados import analisar_midia
 from multimidia.motor_ffmpeg import MotorFFmpeg
+from multimidia.motor_base import MotorMultimidia
 
 _log = logging.getLogger(__name__)
 
@@ -36,3 +37,25 @@ class TarefaAnaliseMidias(QThread):
             except Exception as exc:  # noqa: BLE001 - reportado ao usuário, segue com os demais
                 _log.warning("Falha ao analisar %s: %s", caminho, exc)
                 self.falha.emit(f"{Path(caminho).name}: {exc}")
+
+
+class TarefaExportacao(QThread):
+    """Renderiza a composição sem bloquear a interface."""
+
+    sucesso = pyqtSignal(str)
+    falha = pyqtSignal(str)
+
+    def __init__(self, motor: MotorMultimidia, destino: str, opcoes: dict[str, object], parent=None) -> None:
+        super().__init__(parent)
+        self._motor = motor
+        self._destino = destino
+        self._opcoes = dict(opcoes)
+
+    def run(self) -> None:
+        try:
+            self._motor.exportar(self._destino, **self._opcoes)
+        except Exception as exc:  # noqa: BLE001 - mensagem será exibida pela interface
+            _log.exception("Falha ao exportar para %s", self._destino)
+            self.falha.emit(str(exc))
+        else:
+            self.sucesso.emit(self._destino)

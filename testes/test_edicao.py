@@ -1,15 +1,18 @@
 import unittest
 
-from core.constantes import FAIXA_AUDIO, FAIXA_VIDEO, TIPO_AUDIO, TIPO_VIDEO
+from core.constantes import (
+    FAIXA_AUDIO, FAIXA_VIDEO, TIPO_AUDIO, TIPO_VIDEO, TRANSICAO_DISSOLVER,
+)
 from core.excecoes import ErroEdicao
 from editor.clipes import criar_clipe
 from editor.comandos import (
-    AdicionarClipe, AdicionarFaixa, AlterarClipe, AlterarFaixa, DividirClipe,
-    HistoricoComandos, MoverClipe, RemoverClipe,
+    AdicionarClipe, AdicionarFaixa, AdicionarTransicao, AlterarClipe, AlterarFaixa,
+    AlterarMixagemAudio, DividirClipe, HistoricoComandos, MoverClipe, RemoverClipe,
+    RemoverTransicao,
 )
 from editor.faixas import criar_faixa
 from editor.selecao import Selecao
-from projetos.modelos import MidiaRef, Projeto
+from projetos.modelos import MidiaRef, Projeto, Transicao
 
 
 class BaseEdicao(unittest.TestCase):
@@ -133,6 +136,63 @@ class TesteDividir(BaseEdicao):
         self.assertEqual(self.mv.caminho, "v.mp4")
 
 
+class TesteTransicoes(BaseEdicao):
+    def setUp(self):
+        super().setUp()
+        self.a = self.add_video(0)
+        self.b = self.add_video(100)
+        self.c = self.add_video(200)
+
+    def transicao(self, origem=None, destino=None, duracao=20):
+        return Transicao(
+            "t1", self.v1.id, (origem or self.a).id, (destino or self.b).id,
+            TRANSICAO_DISSOLVER, duracao,
+        )
+
+    def test_aplicar_encurta_timeline_e_desfazer_refazer(self):
+        transicao = self.transicao()
+        self.h.executar(self.p, AdicionarTransicao(transicao))
+        self.assertEqual((self.b.inicio, self.c.inicio, self.p.duracao_frames), (80, 180, 280))
+        self.assertEqual(self.p.transicoes, [transicao])
+
+        self.h.desfazer(self.p)
+        self.assertEqual((self.b.inicio, self.c.inicio, self.p.duracao_frames), (100, 200, 300))
+        self.assertEqual(self.p.transicoes, [])
+        self.h.refazer(self.p)
+        self.assertEqual((self.b.inicio, self.c.inicio), (80, 180))
+
+    def test_remover_e_desfazer_remocao(self):
+        transicao = self.transicao()
+        self.h.executar(self.p, AdicionarTransicao(transicao))
+        self.h.executar(self.p, RemoverTransicao(transicao.id))
+        self.assertEqual((self.b.inicio, self.c.inicio), (100, 200))
+        self.assertEqual(self.p.transicoes, [])
+        self.h.desfazer(self.p)
+        self.assertEqual((self.b.inicio, self.c.inicio), (80, 180))
+        self.assertEqual(self.p.transicoes, [transicao])
+
+    def test_multiplas_transicoes_preservam_sobreposicoes(self):
+        self.h.executar(self.p, AdicionarTransicao(self.transicao()))
+        segunda = Transicao(
+            "t2", self.v1.id, self.b.id, self.c.id, TRANSICAO_DISSOLVER, 10)
+        self.h.executar(self.p, AdicionarTransicao(segunda))
+        self.assertEqual((self.a.inicio, self.b.inicio, self.c.inicio), (0, 80, 170))
+        self.assertEqual(self.p.duracao_frames, 270)
+
+    def test_rejeita_duracao_excessiva_e_clipes_nao_consecutivos(self):
+        with self.assertRaises(ErroEdicao):
+            self.h.executar(self.p, AdicionarTransicao(self.transicao(duracao=51)))
+        with self.assertRaises(ErroEdicao):
+            self.h.executar(self.p, AdicionarTransicao(self.transicao(self.a, self.c)))
+
+    def test_clipe_com_transicao_nao_pode_ser_movido_dividido_ou_excluido(self):
+        self.h.executar(self.p, AdicionarTransicao(self.transicao()))
+        for comando in (MoverClipe(self.a.id, 10), DividirClipe(self.a.id, 30),
+                        RemoverClipe(self.a.id)):
+            with self.assertRaises(ErroEdicao):
+                self.h.executar(self.p, comando)
+
+
 class TesteHistoricoEPropriedades(BaseEdicao):
     def test_alterar_clipe_e_desfazer(self):
         c = self.add_video(0)
@@ -140,6 +200,18 @@ class TesteHistoricoEPropriedades(BaseEdicao):
         self.assertEqual((c.nome, c.cor), ("Novo", "#00ff00"))
         self.h.desfazer(self.p)
         self.assertEqual((c.nome, c.cor), ("v.mp4", None))
+
+    def test_volume_e_mixagem_tem_limites_e_desfazer(self):
+        c = self.add_video(0)
+        self.h.executar(self.p, AlterarClipe(c.id, volume=3))
+        self.assertEqual(c.volume, 2.0)
+        self.h.executar(self.p, AlterarMixagemAudio(
+            volume_original=0, volume_adicionado=0.75))
+        self.assertEqual((self.p.mixagem_audio.volume_original,
+                          self.p.mixagem_audio.volume_adicionado), (0.0, 0.75))
+        self.h.desfazer(self.p)
+        self.assertEqual((self.p.mixagem_audio.volume_original,
+                          self.p.mixagem_audio.volume_adicionado), (1.0, 1.0))
 
     def test_propriedade_invalida(self):
         c = self.add_video(0)

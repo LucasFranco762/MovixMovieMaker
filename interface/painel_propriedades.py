@@ -10,7 +10,7 @@ from PyQt6.QtCore import QEasingCurve, QEvent, QObject, QPropertyAnimation, QRec
 from PyQt6.QtGui import QColor
 from PyQt6.QtWidgets import (
     QApplication, QColorDialog, QFormLayout, QFrame, QHBoxLayout, QLabel, QLineEdit,
-    QPushButton, QToolButton, QVBoxLayout, QWidget,
+    QPushButton, QSlider, QToolButton, QVBoxLayout, QWidget,
 )
 
 from core.tempo import formatar_timecode
@@ -25,6 +25,7 @@ class PainelPropriedades(QFrame):
 
     nome_alterado = pyqtSignal(str, str)         # clipe_id, novo nome
     cor_alterada = pyqtSignal(str, str)          # clipe_id, "#rrggbb" ou "" (padrão)
+    volume_alterado = pyqtSignal(str, float)      # clipe_id, ganho de 0.0 a 2.0
 
     def __init__(self, parent: QWidget, inatividade_s: int) -> None:
         super().__init__(parent)
@@ -63,6 +64,11 @@ class PainelPropriedades(QFrame):
         self._inicio = QLabel("—")
         self._duracao = QLabel("—")
         self._entrada = QLabel("—")
+        self._volume = QSlider(Qt.Orientation.Horizontal)
+        self._volume.setRange(0, 200)
+        self._volume.setValue(100)
+        self._volume.setToolTip("0% silencia; 100% mantém o volume; até 200% amplifica")
+        self._volume.sliderReleased.connect(self._aplicar_volume)
         self._botao_cor = QPushButton("Escolher cor…")
         self._botao_cor.clicked.connect(self._escolher_cor)
         self._botao_padrao = QPushButton("Usar cor padrão")
@@ -71,6 +77,7 @@ class PainelPropriedades(QFrame):
         form.addRow("Início", self._inicio)
         form.addRow("Duração", self._duracao)
         form.addRow("Entrada na mídia", self._entrada)
+        form.addRow("Volume", self._volume)
         form.addRow("Cor do clipe", self._botao_cor)
         form.addRow("", self._botao_padrao)
         lay.addWidget(self._corpo)
@@ -119,11 +126,13 @@ class PainelPropriedades(QFrame):
         unico = self._clipe_unico()
         self._titulo.setText("Propriedades do clipe" if n == 1 else f"{n} clipes selecionados")
         self._nome.setEnabled(unico is not None)
+        self._volume.setEnabled(unico is not None)
         if unico is not None:
             self._nome.setText(unico.nome)
             self._inicio.setText(formatar_timecode(unico.inicio, fps))
             self._duracao.setText(formatar_timecode(unico.duracao, fps))
             self._entrada.setText(formatar_timecode(unico.entrada, fps))
+            self._volume.setValue(round(unico.volume * 100))
         else:
             self._nome.setText("")
             for r in (self._inicio, self._duracao, self._entrada):
@@ -133,6 +142,11 @@ class PainelPropriedades(QFrame):
         unico = self._clipe_unico()
         if unico is not None and self._nome.text() != unico.nome:
             self.nome_alterado.emit(unico.id, self._nome.text())
+
+    def _aplicar_volume(self) -> None:
+        unico = self._clipe_unico()
+        if unico is not None:
+            self.volume_alterado.emit(unico.id, self._volume.value() / 100)
 
     def _escolher_cor(self) -> None:
         unico = self._clipe_unico()

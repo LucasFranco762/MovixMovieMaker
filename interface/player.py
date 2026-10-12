@@ -146,6 +146,10 @@ class Player(QFrame):
         self._timer.stop()
         self._btn_play.setText("▶")
 
+    def pausar(self) -> None:
+        """Pausa sem alterar a posição atual (usado antes da exportação)."""
+        self._pausar()
+
     def parar(self) -> None:
         self._pausar()
         self._c.ir_para(0)

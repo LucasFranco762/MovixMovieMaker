@@ -2,7 +2,10 @@
 from __future__ import annotations
 
 from PyQt6.QtCore import Qt, pyqtSignal
-from PyQt6.QtWidgets import QButtonGroup, QFrame, QToolButton, QVBoxLayout
+from PyQt6.QtGui import QColor
+from PyQt6.QtWidgets import (
+    QButtonGroup, QFrame, QGraphicsDropShadowEffect, QToolButton, QVBoxLayout,
+)
 
 CATEGORIAS = (
     ("midias", "🎞", "Mídias"),
@@ -38,6 +41,11 @@ class MenuLateral(QFrame):
             b.setToolTip(nome)
             b.setToolButtonStyle(Qt.ToolButtonStyle.ToolButtonTextOnly)
             b.setFixedSize(76, 54)
+            sombra = QGraphicsDropShadowEffect(b)
+            sombra.setBlurRadius(16)
+            sombra.setOffset(0, 3)
+            sombra.setColor(QColor(0, 0, 0, 105))
+            b.setGraphicsEffect(sombra)
             b.clicked.connect(lambda _=False, i=id_: self.categoria_clicada.emit(i))
             self._grupo.addButton(b)
             self._botoes[id_] = b

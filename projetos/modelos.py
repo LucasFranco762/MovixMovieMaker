@@ -3,8 +3,8 @@
 O modelo é independente de interface e de motor multimídia. Posições e durações
 são sempre frames inteiros. Os arquivos originais são apenas referenciados.
 
-Ainda não modelados (previstos para a Etapa 5): transições, efeitos, keyframes,
-textos e legendas. O formato é versionado para permitir essa evolução.
+Efeitos, keyframes, textos e legendas ainda serão ampliados. O formato é
+versionado para permitir essa evolução sem perder projetos anteriores.
 """
 from __future__ import annotations
 
@@ -24,6 +24,7 @@ from core.constantes import (
     LARGURA_PADRAO,
     TAXA_AMOSTRAGEM_PADRAO,
     TIPOS_MIDIA,
+    TIPOS_TRANSICAO,
     VERSAO_FORMATO_PROJETO,
 )
 from core.excecoes import ProjetoIncompativelError, ProjetoInvalidoError
@@ -73,6 +74,10 @@ class Clipe:
     nome: str = ""
     cor: str | None = None            # None = cor padrão da categoria
     grupo_id: str | None = None
+    volume: float = 1.0
+
+    def __post_init__(self) -> None:
+        self.volume = max(0.0, min(2.0, float(self.volume)))
 
     @property
     def fim(self) -> int:
@@ -93,9 +98,44 @@ class Faixa:
     visivel: bool = True              # relevante para faixas de vídeo
     silenciada: bool = False          # relevante para faixas de áudio
     cor: str | None = None
+    volume: float = 1.0
+
+    def __post_init__(self) -> None:
+        self.volume = max(0.0, min(2.0, float(self.volume)))
 
     def aceita(self, tipo_clipe: str) -> bool:
         return tipo_clipe in CLIPES_POR_FAIXA.get(self.tipo, ())
+
+
+@dataclass
+class MixagemAudio:
+    """Balanço entre o áudio embutido nos vídeos e as faixas de áudio."""
+
+    volume_original: float = 1.0
+    volume_adicionado: float = 1.0
+
+    def __post_init__(self) -> None:
+        self.volume_original = max(0.0, min(2.0, float(self.volume_original)))
+        self.volume_adicionado = max(0.0, min(2.0, float(self.volume_adicionado)))
+
+
+@dataclass
+class Transicao:
+    """Transição visual entre dois clipes consecutivos da mesma faixa."""
+
+    id: str
+    faixa_id: str
+    clipe_origem_id: str
+    clipe_destino_id: str
+    tipo: str
+    duracao: int
+
+    def __post_init__(self) -> None:
+        if self.tipo not in TIPOS_TRANSICAO:
+            raise ValueError(f"Tipo de transição desconhecido: {self.tipo!r}")
+        self.duracao = int(self.duracao)
+        if self.duracao < 1:
+            raise ValueError("A duração da transição deve ser positiva.")
 
 
 @dataclass
@@ -106,6 +146,8 @@ class Projeto:
     config: ConfiguracaoAV = field(default_factory=ConfiguracaoAV)
     midias: dict[str, MidiaRef] = field(default_factory=dict)
     faixas: list[Faixa] = field(default_factory=list)
+    mixagem_audio: MixagemAudio = field(default_factory=MixagemAudio)
+    transicoes: list[Transicao] = field(default_factory=list)
 
     # ---- consultas ---------------------------------------------------------
     @property
@@ -125,6 +167,16 @@ class Projeto:
                     return f, c
         raise KeyError(clipe_id)
 
+    def transicao_por_id(self, transicao_id: str) -> Transicao:
+        for transicao in self.transicoes:
+            if transicao.id == transicao_id:
+                return transicao
+        raise KeyError(transicao_id)
+
+    def transicoes_do_clipe(self, clipe_id: str) -> list[Transicao]:
+        return [t for t in self.transicoes
+                if clipe_id in (t.clipe_origem_id, t.clipe_destino_id)]
+
     # ---- fábrica -------------------------------------------------------------
     @classmethod
     def novo(cls, nome: str = "Projeto sem título") -> "Projeto":
@@ -142,12 +194,14 @@ class Projeto:
             "versao_formato": self.versao_formato,
             "nome": self.nome,
             "config": vars(self.config).copy(),
+            "mixagem_audio": vars(self.mixagem_audio).copy(),
+            "transicoes": [vars(t).copy() for t in self.transicoes],
             "midias": [vars(m).copy() for m in self.midias.values()],
             "faixas": [
                 {
                     "id": f.id, "nome": f.nome, "tipo": f.tipo,
                     "bloqueada": f.bloqueada, "visivel": f.visivel,
-                    "silenciada": f.silenciada, "cor": f.cor,
+                    "silenciada": f.silenciada, "cor": f.cor, "volume": f.volume,
                     "clipes": [vars(c).copy() for c in f.clipes],
                 }
                 for f in self.faixas
@@ -164,11 +218,13 @@ class Projeto:
         if versao > VERSAO_FORMATO_PROJETO:
             raise ProjetoIncompativelError(
                 f"Este projeto usa o formato versão {versao}, mais novo que o suportado "
-                f"({VERSAO_FORMATO_PROJETO}). Atualize o Movie Maker para abri-lo."
+                f"({VERSAO_FORMATO_PROJETO}). Atualize o Movix Movie Maker para abri-lo."
             )
         dados = _migrar(dados, versao)
         try:
             config = ConfiguracaoAV(**dados["config"])
+            mixagem = MixagemAudio(**dados.get("mixagem_audio", {}))
+            transicoes = [Transicao(**t) for t in dados.get("transicoes", [])]
             midias = {}
             for m in dados["midias"]:
                 ref = MidiaRef(**m)
@@ -184,14 +240,29 @@ class Projeto:
                     id=fd["id"], nome=fd["nome"], tipo=fd["tipo"], clipes=clipes,
                     bloqueada=fd.get("bloqueada", False), visivel=fd.get("visivel", True),
                     silenciada=fd.get("silenciada", False), cor=fd.get("cor"),
+                    volume=float(fd.get("volume", 1.0)),
                 ))
             projeto = cls(id=dados["id"], versao_formato=VERSAO_FORMATO_PROJETO,
-                          nome=dados["nome"], config=config, midias=midias, faixas=faixas)
-        except (KeyError, TypeError) as exc:
+                          nome=dados["nome"], config=config, midias=midias, faixas=faixas,
+                          mixagem_audio=mixagem, transicoes=transicoes)
+            for transicao in projeto.transicoes:
+                faixa_a, _ = projeto.localizar_clipe(transicao.clipe_origem_id)
+                faixa_b, _ = projeto.localizar_clipe(transicao.clipe_destino_id)
+                if faixa_a.id != transicao.faixa_id or faixa_b.id != transicao.faixa_id:
+                    raise ProjetoInvalidoError("Uma transição referencia clipes de outra faixa.")
+        except (KeyError, TypeError, ValueError) as exc:
             raise ProjetoInvalidoError(f"Estrutura do projeto inválida: {exc}") from exc
         return projeto
 
 
 def _migrar(dados: dict[str, Any], versao: int) -> dict[str, Any]:
-    """Ponto de extensão para migrações de formato. Hoje só existe a versão 1."""
+    """Completa campos novos sem invalidar projetos de versões anteriores."""
+    if versao < 2:
+        dados.setdefault("mixagem_audio", {"volume_original": 1.0, "volume_adicionado": 1.0})
+        for faixa in dados.get("faixas", []):
+            faixa.setdefault("volume", 1.0)
+            for clipe in faixa.get("clipes", []):
+                clipe.setdefault("volume", 1.0)
+    if versao < 3:
+        dados.setdefault("transicoes", [])
     return dados

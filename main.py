@@ -3,9 +3,10 @@ from __future__ import annotations
 import logging
 import sys
 import traceback
+from pathlib import Path
 
 from core.configuracoes import criar_configuracoes_padrao, diretorio_dados_usuario
-from core.constantes import NOME_APLICATIVO, ORGANIZACAO, VERSAO_APLICATIVO
+from core.constantes import ARQUIVO_LOGO, NOME_APLICATIVO, ORGANIZACAO, VERSAO_APLICATIVO
 from core.controlador import Controlador
 from core.excecoes import DependenciaAusenteError
 from core.logging_config import configurar_logging
@@ -34,10 +35,18 @@ def main() -> int:
     configurar_logging(diretorio_dados_usuario() / "logs")
     _log.info("Iniciando %s %s", NOME_APLICATIVO, VERSAO_APLICATIVO)
 
+    from PyQt6.QtCore import QTimer
+    from PyQt6.QtGui import QIcon
     from PyQt6.QtWidgets import QApplication, QMessageBox   # import tardio: falha clara se ausente
     app = QApplication(sys.argv)
     app.setApplicationName(NOME_APLICATIVO)
     app.setOrganizationName(ORGANIZACAO)
+    caminho_logo = Path(__file__).resolve().parent / ARQUIVO_LOGO
+    if caminho_logo.is_file():
+        app.setWindowIcon(QIcon(str(caminho_logo)))
+
+    from interface.splash import ATRASO_APOS_CARREGAMENTO_MS, criar_splash
+    splash = criar_splash(app, caminho_logo)
 
     def ao_excecao_nao_tratada(tipo, valor, tb) -> None:
         """Erros inesperados são registrados e mostrados sem encerrar o aplicativo."""
@@ -59,7 +68,15 @@ def main() -> int:
     controlador.novo_projeto()
 
     janela = JanelaPrincipal(controlador, aviso_inicial=" | ".join(avisos))
-    janela.mostrar()
+
+    def revelar_janela() -> None:
+        janela.mostrar()
+        if splash is not None:
+            splash.finish(janela)
+
+    # A janela e todos os seus componentes já estão construídos. A margem de
+    # segurança solicitada mantém a splash por mais dois segundos.
+    QTimer.singleShot(ATRASO_APOS_CARREGAMENTO_MS, revelar_janela)
     codigo = app.exec()
     del filtro_cursor_botoes
     controlador.encerrar()

@@ -6,11 +6,15 @@ vão para o menu de opções adicionais ("⋯"). Comandos principais sempre vis�
 from __future__ import annotations
 
 from dataclasses import dataclass
+from pathlib import Path
 
 from PyQt6.QtCore import Qt, pyqtSignal
-from PyQt6.QtWidgets import QFrame, QHBoxLayout, QLabel, QMenu, QSizePolicy, QToolButton
+from PyQt6.QtGui import QColor, QPixmap
+from PyQt6.QtWidgets import (
+    QFrame, QGraphicsDropShadowEffect, QHBoxLayout, QLabel, QMenu, QSizePolicy, QToolButton,
+)
 
-from core.constantes import NOME_APLICATIVO
+from core.constantes import ARQUIVO_LOGO, NOME_APLICATIVO
 
 
 @dataclass(frozen=True)
@@ -43,12 +47,24 @@ class Cabecalho(QFrame):
     def __init__(self, parent=None) -> None:
         super().__init__(parent)
         self.setObjectName("cabecalho")
-        self.setFixedHeight(48)
+        self.setFixedHeight(56)
         lay = QHBoxLayout(self)
         lay.setContentsMargins(12, 6, 12, 6)
         lay.setSpacing(6)
 
-        self._titulo = QLabel(f"🎬 {NOME_APLICATIVO}")
+        self._logo = QLabel()
+        self._logo.setFixedSize(58, 42)
+        self._logo.setToolTip(NOME_APLICATIVO)
+        pixmap = QPixmap(str(Path(__file__).resolve().parent.parent / ARQUIVO_LOGO))
+        if not pixmap.isNull():
+            self._logo.setPixmap(pixmap.scaled(
+                self._logo.size(),
+                Qt.AspectRatioMode.KeepAspectRatio,
+                Qt.TransformationMode.SmoothTransformation,
+            ))
+        lay.addWidget(self._logo)
+
+        self._titulo = QLabel(NOME_APLICATIVO)
         self._titulo.setObjectName("tituloApp")
         self._nome_projeto = QLabel("Projeto sem título")
         self._nome_projeto.setObjectName("nomeProjeto")
@@ -60,22 +76,34 @@ class Cabecalho(QFrame):
         self._botoes: dict[str, QToolButton] = {}
         for a in ACOES:
             b = QToolButton()
+            b.setObjectName("itemCabecalho")
+            b.setProperty("destaque", a.id == "exportar")
             b.setToolTip(a.dica)
             b.setCursor(Qt.CursorShape.PointingHandCursor)
+            self._aplicar_sombra_glass(b)
             b.clicked.connect(lambda _=False, i=a.id: self.acao.emit(i))
-            if a.id == "exportar":
-                b.setObjectName("primario")
             self._botoes[a.id] = b
             lay.addWidget(b)
 
         self._mais = QToolButton()
+        self._mais.setObjectName("itemCabecalho")
         self._mais.setText("⋯")
         self._mais.setToolTip("Mais opções")
+        self._aplicar_sombra_glass(self._mais)
         self._mais.setPopupMode(QToolButton.ToolButtonPopupMode.InstantPopup)
         self._menu_mais = QMenu(self._mais)
         self._mais.setMenu(self._menu_mais)
         lay.addWidget(self._mais)
         self._atualizar_modo()
+
+    @staticmethod
+    def _aplicar_sombra_glass(botao: QToolButton) -> None:
+        """Aplica a sombra individual que completa a superfície glass do botão."""
+        sombra = QGraphicsDropShadowEffect(botao)
+        sombra.setBlurRadius(16)
+        sombra.setOffset(0, 3)
+        sombra.setColor(QColor(0, 0, 0, 105))
+        botao.setGraphicsEffect(sombra)
 
     # ---- API --------------------------------------------------------------------------
     def definir_nome_projeto(self, nome: str, modificado: bool) -> None:
@@ -112,4 +140,4 @@ class Cabecalho(QFrame):
             else:
                 b.setVisible(True)
         self._mais.setVisible(tem_excesso)
-        self._titulo.setText(f"🎬 {NOME_APLICATIVO}" if largura >= 560 else "🎬")
+        self._titulo.setText(NOME_APLICATIVO if largura >= 560 else "Movix")

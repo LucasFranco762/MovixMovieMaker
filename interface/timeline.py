@@ -14,7 +14,7 @@ from __future__ import annotations
 import logging
 
 from PyQt6.QtCore import QPointF, QRect, QRectF, Qt, pyqtSignal
-from PyQt6.QtGui import QColor, QFont, QPainter, QPen, QPolygonF
+from PyQt6.QtGui import QColor, QFont, QLinearGradient, QPainter, QPen, QPolygonF
 from PyQt6.QtWidgets import (
     QColorDialog, QFrame, QGridLayout, QHBoxLayout, QLabel, QScrollBar, QToolButton,
     QVBoxLayout, QWidget,
@@ -127,6 +127,9 @@ class CanvasTimeline(QWidget):
             p.drawLine(LARGURA_CABECALHO, y + ALTURA_FAIXA - 1, w, y + ALTURA_FAIXA - 1)
             for clipe in faixa.clipes:
                 self._pintar_clipe(p, faixa, clipe, y)
+            for transicao in proj.transicoes:
+                if transicao.faixa_id == faixa.id:
+                    self._pintar_transicao(p, transicao, y)
         if self._fantasma is not None and self._press is not None:
             ini, idx = self._fantasma
             clipe = self._press["clipe"]
@@ -226,6 +229,29 @@ class CanvasTimeline(QWidget):
             texto = f"{ICONES_CATEGORIA.get(clipe.tipo, '?')} {clipe.nome}"
             p.drawText(r.adjusted(5, 0, -3, 0), Qt.AlignmentFlag.AlignVCenter | Qt.AlignmentFlag.AlignLeft,
                        self._elidir(texto, p, int(largura) - 8))
+
+    def _pintar_transicao(self, p: QPainter, transicao, y: int) -> None:
+        try:
+            _, destino = self._c.projeto.localizar_clipe(transicao.clipe_destino_id)
+        except KeyError:
+            return
+        x0 = self.x_de_frame(destino.inicio)
+        largura = max(6.0, transicao.duracao * self.ppf)
+        if x0 + largura < LARGURA_CABECALHO or x0 > self.width():
+            return
+        r = QRectF(x0, y + 4, largura, ALTURA_FAIXA - 9)
+        gradiente = QLinearGradient(r.topLeft(), r.topRight())
+        gradiente.setColorAt(0.0, QColor(112, 78, 190, 205))
+        gradiente.setColorAt(0.5, QColor(151, 111, 232, 225))
+        gradiente.setColorAt(1.0, QColor(73, 118, 201, 205))
+        p.fillRect(r, gradiente)
+        p.setPen(QPen(QColor("#e7dcff"), 1))
+        p.drawRect(r)
+        p.drawLine(r.topLeft(), r.bottomRight())
+        p.drawLine(r.bottomLeft(), r.topRight())
+        if largura >= 26:
+            p.setPen(QColor("#ffffff"))
+            p.drawText(r, Qt.AlignmentFlag.AlignCenter, "⇄")
 
     # ---- busca ---------------------------------------------------------------------------------------
     def _clipe_em(self, x: float, y: float):

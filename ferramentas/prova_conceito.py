@@ -1,6 +1,6 @@
 """Prova de conceito MLT + FFmpeg + PyQt6 (REQ-004, 6.1) — rodar NO WINDOWS.
 
-Uso (PowerShell, na pasta MovieMaker, com o ambiente virtual ativo):
+Uso (PowerShell, na pasta MovixMovieMaker, com o ambiente virtual ativo):
 
     python ferramentas\\prova_conceito.py
     python ferramentas\\prova_conceito.py --saida C:\\temp\\poc --reproduzir-audio
@@ -34,7 +34,7 @@ sys.path.insert(0, str(RAIZ))
 
 from core.excecoes import ErroMovieMaker  # noqa: E402
 from multimidia.motor_ffmpeg import MotorFFmpeg  # noqa: E402
-from multimidia.motor_mlt import importar_mlt  # noqa: E402
+from multimidia.motor_mlt import formato_imagem_rgba, importar_mlt, inicializar_mlt  # noqa: E402
 
 APROVADO, MANUAL, FALHOU, NAO_EXEC = "APROVADO", "MANUAL", "FALHOU", "NAO_EXECUTADO"
 
@@ -114,7 +114,7 @@ class Poc:
         return APROVADO, "; ".join(partes)
 
     def p2(self):
-        self.mlt.Factory.init()
+        inicializar_mlt(self.mlt)
         self.perfil = self.mlt.Profile("atsc_720p_30")
         return APROVADO, f"Factory.init OK; perfil {self.perfil.width()}x{self.perfil.height()}"
 
@@ -158,7 +158,7 @@ class Poc:
         self.clipe_a.seek(45)
         quadro = self.clipe_a.get_frame()
         largura, altura = 640, 360
-        dados = quadro.get_image(mlt.mlt_image_format.mlt_image_rgba, largura, altura)
+        dados = quadro.get_image(formato_imagem_rgba(mlt), largura, altura)
         imagem = QImage(bytes(dados), largura, altura, largura * 4, QImage.Format.Format_RGBA8888).copy()
         destino = self.saida / "quadro_qimage.png"
         if imagem.isNull() or not imagem.save(str(destino)):

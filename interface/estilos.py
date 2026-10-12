@@ -46,11 +46,17 @@ QToolTip {{ background: {COR_PAINEL_ALT}; color: {COR_TEXTO}; border: 1px solid 
 QFrame#cabecalho {{ background: {COR_PAINEL}; border-bottom: 1px solid {COR_BORDA}; }}
 QLabel#tituloApp {{ font-weight: 700; font-size: 14px; }}
 QLabel#nomeProjeto {{ color: {COR_TEXTO_SUAVE}; }}
+QToolButton#itemCabecalho {{ background: qlineargradient(x1:0, y1:0, x2:1, y2:1, stop:0 rgba(255, 255, 255, 24), stop:0.45 rgba(255, 255, 255, 10), stop:1 rgba(89, 117, 164, 13)); border: 1px solid rgba(255, 255, 255, 34); border-radius: 10px; padding: 7px 11px; color: {COR_TEXTO_SUAVE}; }}
+QToolButton#itemCabecalho:hover {{ background: qlineargradient(x1:0, y1:0, x2:0, y2:1, stop:0 rgba(255, 255, 255, 42), stop:1 rgba(100, 145, 220, 24)); border-color: rgba(164, 196, 255, 90); color: {COR_TEXTO}; }}
+QToolButton#itemCabecalho:pressed {{ background: rgba(79, 140, 255, 38); }}
+QToolButton#itemCabecalho[destaque="true"] {{ background: qlineargradient(x1:0, y1:0, x2:1, y2:1, stop:0 rgba(112, 164, 255, 62), stop:1 rgba(57, 104, 190, 38)); border-color: rgba(132, 176, 255, 130); color: #b5ceff; font-weight: 600; }}
+QToolButton#itemCabecalho:disabled {{ background: rgba(255, 255, 255, 4); border-color: rgba(255, 255, 255, 10); color: #5d6573; }}
 
 QFrame#menuLateral {{ background: {COR_PAINEL}; border-right: 1px solid {COR_BORDA}; }}
-QToolButton#itemMenu {{ border: none; border-radius: 8px; padding: 8px 2px; color: {COR_TEXTO_SUAVE}; }}
-QToolButton#itemMenu:hover {{ background: {COR_PAINEL_ALT}; color: {COR_TEXTO}; }}
-QToolButton#itemMenu:checked {{ background: {COR_PAINEL_ALT}; color: {COR_DESTAQUE}; }}
+QToolButton#itemMenu {{ background: qlineargradient(x1:0, y1:0, x2:1, y2:1, stop:0 rgba(255, 255, 255, 24), stop:0.45 rgba(255, 255, 255, 10), stop:1 rgba(89, 117, 164, 13)); border: 1px solid rgba(255, 255, 255, 34); border-radius: 11px; padding: 8px 2px; color: {COR_TEXTO_SUAVE}; }}
+QToolButton#itemMenu:hover {{ background: qlineargradient(x1:0, y1:0, x2:0, y2:1, stop:0 rgba(255, 255, 255, 42), stop:1 rgba(100, 145, 220, 24)); border-color: rgba(164, 196, 255, 90); color: {COR_TEXTO}; }}
+QToolButton#itemMenu:pressed {{ background: rgba(79, 140, 255, 38); }}
+QToolButton#itemMenu:checked {{ background: qlineargradient(x1:0, y1:0, x2:1, y2:1, stop:0 rgba(112, 164, 255, 62), stop:1 rgba(57, 104, 190, 38)); border-color: rgba(132, 176, 255, 130); color: #9bc0ff; }}
 
 QFrame#painelFerramentas, QFrame#painelPropriedades {{ background: {COR_PAINEL}; border: 1px solid {COR_BORDA}; }}
 QFrame#painelPropriedades {{ border-radius: 10px; }}

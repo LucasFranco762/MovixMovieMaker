@@ -1,4 +1,4 @@
-"""Hierarquia de exceções do Movie Maker.
+"""Hierarquia de exceções do Movix Movie Maker.
 
 Todas as mensagens destinadas ao usuário ficam em português brasileiro.
 """

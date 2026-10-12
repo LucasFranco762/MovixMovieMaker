@@ -1,4 +1,4 @@
-# Dependências Python do Movie Maker (instaladas via pip)
+# Dependências Python do Movix Movie Maker (instaladas via pip)
 # PyQt6: licença GPL v3 / comercial (Riverbank). Ver LICENCAS.md.
 PyQt6>=6.5
 

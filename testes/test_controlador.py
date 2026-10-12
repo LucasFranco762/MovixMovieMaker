@@ -3,7 +3,7 @@ import unittest
 from pathlib import Path
 
 from core.configuracoes import ArmazenamentoJson, Configuracoes
-from core.constantes import FAIXA_AUDIO, TIPO_AUDIO, TIPO_VIDEO
+from core.constantes import FAIXA_AUDIO, TIPO_AUDIO, TIPO_VIDEO, TRANSICAO_DISSOLVER
 from core.controlador import Controlador
 from core.eventos import PROJETO_ALTERADO, PROJETO_CARREGADO, SELECAO_ALTERADA
 from core.excecoes import ErroEdicao
@@ -90,6 +90,35 @@ class TesteControlador(unittest.TestCase):
 
     def test_importar_sem_ffmpeg_informa_erro(self):
         self.assertEqual(len(self.c.importar_midias(["x.mp4"])), 1)
+
+    def test_audio_sobreposto_cria_nova_faixa_e_mixagem_e_desfeita(self):
+        self.c.adicionar_midia_na_timeline("ma", 0)
+        self.c.adicionar_midia_na_timeline("ma", 10, criar_faixa_se_necessario=True)
+        faixas_audio = [f for f in self.c.projeto.faixas if f.tipo == FAIXA_AUDIO]
+        self.assertEqual(len(faixas_audio), 2)
+        self.c.configurar_mixagem_audio(0, 1)
+        self.assertEqual((self.c.projeto.mixagem_audio.volume_original,
+                          self.c.projeto.mixagem_audio.volume_adicionado), (0.0, 1.0))
+        self.c.desfazer()
+        self.assertEqual(self.c.projeto.mixagem_audio.volume_original, 1.0)
+
+    def test_aplicar_transicao_pela_selecao_e_remover(self):
+        self.c.adicionar_midia_na_timeline("mv", 0)
+        self.c.adicionar_midia_na_timeline("mv", 90)
+        clipes = self.c.projeto.faixas[0].clipes
+        self.c.selecionar([clipes[0].id, clipes[1].id])
+        transicao = self.c.aplicar_transicao(TRANSICAO_DISSOLVER, 1.0)
+        self.assertEqual(transicao.duracao, 30)
+        self.assertEqual(clipes[1].inicio, 60)
+        self.c.remover_transicao(transicao.id)
+        self.assertEqual(clipes[1].inicio, 90)
+
+    def test_aplicar_transicao_no_corte_sob_o_cursor(self):
+        self.c.adicionar_midia_na_timeline("mv", 0)
+        self.c.adicionar_midia_na_timeline("mv", 90)
+        self.c.ir_para(90)
+        self.c.aplicar_transicao(TRANSICAO_DISSOLVER, 0.5)
+        self.assertEqual(self.c.projeto.faixas[0].clipes[1].inicio, 75)
 
 
 if __name__ == "__main__":

@@ -1,15 +1,16 @@
-"""Constantes e valores padrão compartilhados por todo o Movie Maker."""
+"""Constantes e valores padrão compartilhados por todo o Movix Movie Maker."""
 from __future__ import annotations
 
-NOME_APLICATIVO = "Movie Maker"
-ORGANIZACAO = "MovieMaker"
+NOME_APLICATIVO = "Movix Movie Maker"
+ORGANIZACAO = "MovixMovieMaker"
 VERSAO_APLICATIVO = "0.1.0"
+ARQUIVO_LOGO = "Logo Movix Movie Maker em Neon.png"
 
 # Versão do formato de arquivo de projeto. Incrementar ao alterar o esquema
 # e implementar a migração correspondente em projetos/modelos.py.
-VERSAO_FORMATO_PROJETO = 1
+VERSAO_FORMATO_PROJETO = 3
 EXTENSAO_PROJETO = ".mmproj"
-EXTENSAO_PROJETO_FILTRO = "Projeto do Movie Maker (*.mmproj)"
+EXTENSAO_PROJETO_FILTRO = "Projeto do Movix Movie Maker (*.mmproj)"
 
 # Formatos previstos (REQ-009). A compatibilidade real depende do FFmpeg
 # instalado e deve ser validada (ver ferramentas/prova_conceito.py).
@@ -28,6 +29,10 @@ TIPOS_MIDIA = (TIPO_VIDEO, TIPO_AUDIO, TIPO_IMAGEM, TIPO_TEXTO, TIPO_LEGENDA)
 # Tipos de faixa
 FAIXA_VIDEO = "video"
 FAIXA_AUDIO = "audio"
+
+# Transições visuais disponíveis no catálogo.
+TRANSICAO_DISSOLVER = "dissolver"
+TIPOS_TRANSICAO = (TRANSICAO_DISSOLVER,)
 
 # Tipos de clipe aceitos por tipo de faixa
 CLIPES_POR_FAIXA = {

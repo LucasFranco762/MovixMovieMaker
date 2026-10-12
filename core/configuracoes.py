@@ -1,7 +1,7 @@
 """Configurações persistentes do aplicativo (preferências globais).
 
 Decisão técnica: o armazenamento usa um arquivo JSON no diretório de dados do
-usuário (``%APPDATA%\\MovieMaker`` no Windows), com escrita atômica. Isso mantém
+usuário (``%APPDATA%\\MovixMovieMaker`` no Windows), com escrita atômica. Isso mantém
 as configurações testáveis sem Qt e sem exigir privilégios administrativos.
 Os dados específicos de cada projeto NÃO são guardados aqui (ficam no .mmproj).
 Se for desejável usar QSettings no futuro, basta implementar a mesma interface

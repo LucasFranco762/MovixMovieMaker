@@ -15,8 +15,9 @@ from core.eventos import (
 from core.excecoes import ErroEdicao
 from editor.clipes import criar_clipe
 from editor.comandos import (
-    AdicionarClipe, AdicionarFaixa, AlterarClipe, AlterarFaixa, Comando,
-    DividirClipe, HistoricoComandos, MoverClipe, RemoverClipe,
+    AdicionarClipe, AdicionarFaixa, AdicionarTransicao, AlterarClipe, AlterarFaixa,
+    AlterarMixagemAudio, Comando, DividirClipe, HistoricoComandos, MoverClipe,
+    RemoverClipe, RemoverTransicao,
 )
 from editor.faixas import criar_faixa
 from editor.selecao import Selecao
@@ -24,7 +25,7 @@ from multimidia.metadados import analisar_midia
 from multimidia.motor_base import MotorMultimidia
 from multimidia.motor_ffmpeg import MotorFFmpeg
 from projetos.gerenciamento import GerenciadorProjetos
-from projetos.modelos import MidiaRef, Projeto
+from projetos.modelos import Clipe, Faixa, MidiaRef, Projeto, Transicao, novo_id
 
 _log = logging.getLogger(__name__)
 
@@ -125,7 +126,8 @@ class Controlador:
         if notificar:
             self.eventos.publicar(MIDIAS_ALTERADAS)
 
-    def adicionar_midia_na_timeline(self, midia_id: str, inicio: int | None = None) -> None:
+    def adicionar_midia_na_timeline(self, midia_id: str, inicio: int | None = None,
+                                    criar_faixa_se_necessario: bool = False) -> None:
         midia = self.projeto.midias[midia_id]
         inicio = self.posicao if inicio is None else inicio
         for faixa in self.projeto.faixas:
@@ -135,6 +137,12 @@ class Controlador:
                     return
                 except ErroEdicao:
                     continue            # tenta a próxima faixa compatível
+        if criar_faixa_se_necessario:
+            tipo_faixa = "audio" if midia.tipo == "audio" else "video"
+            faixa = criar_faixa(self.projeto, tipo_faixa)
+            self.executar(AdicionarFaixa(faixa))
+            self.executar(AdicionarClipe(faixa.id, criar_clipe(midia, inicio)))
+            return
         raise ErroEdicao("Nenhuma faixa compatível e livre nessa posição. Crie uma nova faixa.")
 
     def adicionar_faixa(self, tipo: str) -> None:
@@ -164,6 +172,54 @@ class Controlador:
 
     def alterar_faixa(self, faixa_id: str, **alteracoes: object) -> None:
         self.executar(AlterarFaixa(faixa_id, **alteracoes))
+
+    def configurar_mixagem_audio(self, volume_original: float, volume_adicionado: float) -> None:
+        atual = self.projeto.mixagem_audio
+        original = max(0.0, min(2.0, float(volume_original)))
+        adicionado = max(0.0, min(2.0, float(volume_adicionado)))
+        if (original, adicionado) != (atual.volume_original, atual.volume_adicionado):
+            self.executar(AlterarMixagemAudio(
+                volume_original=original, volume_adicionado=adicionado))
+
+    def aplicar_transicao(self, tipo: str, duracao_segundos: float) -> Transicao:
+        faixa, origem, destino = self._clipes_para_transicao()
+        duracao = max(1, round(float(duracao_segundos) * float(self.projeto.config.fps)))
+        transicao = Transicao(
+            id=novo_id(), faixa_id=faixa.id,
+            clipe_origem_id=origem.id, clipe_destino_id=destino.id,
+            tipo=tipo, duracao=duracao,
+        )
+        self.executar(AdicionarTransicao(transicao))
+        return transicao
+
+    def remover_transicao(self, transicao_id: str) -> None:
+        self.executar(RemoverTransicao(transicao_id))
+
+    def _clipes_para_transicao(self) -> tuple[Faixa, Clipe, Clipe]:
+        selecionados: list[tuple[Faixa, Clipe]] = []
+        for clipe_id in self.selecao.ids:
+            try:
+                selecionados.append(self.projeto.localizar_clipe(clipe_id))
+            except KeyError:
+                continue
+        if len(selecionados) == 2:
+            if selecionados[0][0].id != selecionados[1][0].id:
+                raise ErroEdicao("Os dois clipes selecionados precisam estar na mesma faixa.")
+            faixa = selecionados[0][0]
+            clipes = sorted((selecionados[0][1], selecionados[1][1]), key=lambda c: c.inicio)
+            return faixa, clipes[0], clipes[1]
+        if len(selecionados) > 2:
+            raise ErroEdicao("Selecione somente os dois clipes que receberão a transição.")
+
+        for faixa in self.projeto.faixas:
+            if faixa.tipo != "video":
+                continue
+            clipes = sorted(faixa.clipes, key=lambda c: c.inicio)
+            for origem, destino in zip(clipes, clipes[1:]):
+                if origem.fim == self.posicao == destino.inicio:
+                    return faixa, origem, destino
+        raise ErroEdicao(
+            "Selecione dois clipes de vídeo consecutivos ou posicione o cursor exatamente no corte.")
 
     # ---- navegação ---------------------------------------------------------------------------------
     def ir_para(self, frame: int) -> None:
