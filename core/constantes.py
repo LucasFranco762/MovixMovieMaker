@@ -8,7 +8,7 @@ ARQUIVO_LOGO = "Logo Movix Movie Maker em Neon.png"
 
 # Versão do formato de arquivo de projeto. Incrementar ao alterar o esquema
 # e implementar a migração correspondente em projetos/modelos.py.
-VERSAO_FORMATO_PROJETO = 3
+VERSAO_FORMATO_PROJETO = 6
 EXTENSAO_PROJETO = ".mmproj"
 EXTENSAO_PROJETO_FILTRO = "Projeto do Movix Movie Maker (*.mmproj)"
 
@@ -30,9 +30,46 @@ TIPOS_MIDIA = (TIPO_VIDEO, TIPO_AUDIO, TIPO_IMAGEM, TIPO_TEXTO, TIPO_LEGENDA)
 FAIXA_VIDEO = "video"
 FAIXA_AUDIO = "audio"
 
-# Transições visuais disponíveis no catálogo.
+# Transições visuais disponíveis no catálogo. O primeiro item permanece
+# sendo o padrão para manter o comportamento dos projetos existentes.
 TRANSICAO_DISSOLVER = "dissolver"
-TIPOS_TRANSICAO = (TRANSICAO_DISSOLVER,)
+TRANSICAO_VARREDURA_HORIZONTAL = "varredura_horizontal"
+TRANSICAO_VARREDURA_VERTICAL = "varredura_vertical"
+TRANSICAO_VARREDURA_DIAGONAL = "varredura_diagonal"
+TRANSICAO_IRIS_CIRCULAR = "iris_circular"
+
+CATALOGO_TRANSICOES = (
+    (TRANSICAO_DISSOLVER, "Dissolver",
+     "Mistura gradualmente a imagem do primeiro clipe com a do segundo"),
+    (TRANSICAO_VARREDURA_HORIZONTAL, "Varredura horizontal",
+     "Revela o segundo clipe progressivamente da esquerda para a direita"),
+    (TRANSICAO_VARREDURA_VERTICAL, "Varredura vertical",
+     "Revela o segundo clipe progressivamente de cima para baixo"),
+    (TRANSICAO_VARREDURA_DIAGONAL, "Varredura diagonal",
+     "Revela o segundo clipe em uma linha diagonal"),
+    (TRANSICAO_IRIS_CIRCULAR, "Íris circular",
+     "Revela o segundo clipe em um círculo que se expande a partir do centro"),
+)
+TIPOS_TRANSICAO = tuple(tipo for tipo, _nome, _descricao in CATALOGO_TRANSICOES)
+NOMES_TRANSICAO = {tipo: nome for tipo, nome, _descricao in CATALOGO_TRANSICOES}
+
+# Efeitos visuais aplicáveis a clipes. A implementação de cada efeito no
+# motor fica em multimidia/motor_mlt.py; aqui permanece o catálogo da aplicação.
+EFEITO_ESCALA_CINZA = "escala_cinza"
+EFEITO_SEPIA = "sepia"
+EFEITO_INVERTER = "inverter"
+EFEITO_DESFOQUE = "desfoque"
+EFEITO_BRILHO = "brilho"
+
+CATALOGO_EFEITOS = (
+    (EFEITO_ESCALA_CINZA, "Escala de cinza", "Remove as cores do clipe"),
+    (EFEITO_SEPIA, "Sépia", "Aplica uma tonalidade de fotografia antiga"),
+    (EFEITO_INVERTER, "Inverter cores", "Inverte as cores da imagem"),
+    (EFEITO_DESFOQUE, "Desfoque", "Suaviza os detalhes da imagem"),
+    (EFEITO_BRILHO, "Aumentar brilho", "Clareia a imagem do clipe"),
+)
+TIPOS_EFEITO = tuple(tipo for tipo, _nome, _descricao in CATALOGO_EFEITOS)
+NOMES_EFEITO = {tipo: nome for tipo, nome, _descricao in CATALOGO_EFEITOS}
 
 # Tipos de clipe aceitos por tipo de faixa
 CLIPES_POR_FAIXA = {

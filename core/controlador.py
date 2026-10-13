@@ -8,6 +8,7 @@ import logging
 from pathlib import Path
 
 from core.configuracoes import Configuracoes
+from core.constantes import FAIXA_VIDEO, TIPOS_EFEITO, TIPO_LEGENDA, TIPO_TEXTO
 from core.eventos import (
     BarramentoEventos, MIDIAS_ALTERADAS, POSICAO_ALTERADA, PROJETO_ALTERADO,
     PROJETO_CARREGADO, PROJETO_SALVO, SELECAO_ALTERADA,
@@ -15,11 +16,12 @@ from core.eventos import (
 from core.excecoes import ErroEdicao
 from editor.clipes import criar_clipe
 from editor.comandos import (
-    AdicionarClipe, AdicionarFaixa, AdicionarTransicao, AlterarClipe, AlterarFaixa,
+    AdicionarClipe, AdicionarFaixa, AdicionarTransicao, AlterarClipe, AlterarElementoTexto, AlterarFaixa,
     AlterarMixagemAudio, Comando, DividirClipe, HistoricoComandos, MoverClipe,
     RemoverClipe, RemoverTransicao,
 )
-from editor.faixas import criar_faixa
+from editor.faixas import criar_faixa, encontrar_sobreposicao
+from editor.legendas import gerar_srt, interpretar_srt
 from editor.selecao import Selecao
 from multimidia.metadados import analisar_midia
 from multimidia.motor_base import MotorMultimidia
@@ -164,6 +166,9 @@ class Controlador:
         for clipe_id in list(self.selecao.ids):
             self.executar(RemoverClipe(clipe_id))
 
+    def remover_clipe(self, clipe_id: str) -> None:
+        self.executar(RemoverClipe(clipe_id))
+
     def mover_clipe(self, clipe_id: str, novo_inicio: int, faixa_id: str | None = None) -> None:
         self.executar(MoverClipe(clipe_id, novo_inicio, faixa_id))
 
@@ -173,6 +178,81 @@ class Controlador:
     def alterar_faixa(self, faixa_id: str, **alteracoes: object) -> None:
         self.executar(AlterarFaixa(faixa_id, **alteracoes))
 
+    def salvar_elemento_texto(self, tipo: str, conteudo: str, duracao_segundos: float,
+                              familia_fonte: str, tamanho_fonte: int, cor_texto: str,
+                              cor_fundo_texto: str, alinhamento_h: str,
+                              alinhamento_v: str, clipe_id: str | None = None,
+                              inicio_frame: int | None = None) -> Clipe:
+        if tipo not in (TIPO_TEXTO, TIPO_LEGENDA):
+            raise ErroEdicao(f"Tipo de elemento textual inválido: {tipo!r}.")
+        conteudo = conteudo.strip()
+        if not conteudo:
+            raise ErroEdicao("Digite o conteúdo do texto.")
+        duracao = max(1, round(float(duracao_segundos) * float(self.projeto.config.fps)))
+        propriedades = dict(
+            conteudo=conteudo, duracao=duracao, familia_fonte=familia_fonte or "Segoe UI",
+            tamanho_fonte=tamanho_fonte, cor_texto=cor_texto,
+            cor_fundo_texto=cor_fundo_texto, alinhamento_h=alinhamento_h,
+            alinhamento_v=alinhamento_v,
+        )
+        if clipe_id is not None:
+            self.executar(AlterarElementoTexto(clipe_id, **propriedades))
+            return self.projeto.localizar_clipe(clipe_id)[1]
+
+        clipe = Clipe(
+            id=novo_id(), midia_id="", tipo=tipo,
+            inicio=self.posicao if inicio_frame is None else max(0, int(inicio_frame)),
+            nome=conteudo[:40],
+            **propriedades,
+        )
+        # Textos ficam em faixas próprias de sobreposição. Isso preserva a faixa
+        # de vídeo principal mesmo quando o usuário cria a legenda antes de
+        # importar o primeiro vídeo.
+        faixa = next((f for f in reversed(self.projeto.faixas)
+                      if f.tipo == FAIXA_VIDEO and not f.bloqueada and f.clipes
+                      and all(item.tipo == tipo for item in f.clipes)
+                      and encontrar_sobreposicao(f, clipe.inicio, clipe.duracao) is None), None)
+        if faixa is None:
+            faixa = criar_faixa(self.projeto, FAIXA_VIDEO)
+            faixa.nome = "Textos" if tipo == TIPO_TEXTO else "Legendas"
+            self.executar(AdicionarFaixa(faixa))
+        self.executar(AdicionarClipe(faixa.id, clipe))
+        self.selecionar([clipe.id])
+        return clipe
+
+    def remover_elemento_texto(self, clipe_id: str) -> None:
+        _, clipe = self.projeto.localizar_clipe(clipe_id)
+        if clipe.tipo not in (TIPO_TEXTO, TIPO_LEGENDA):
+            raise ErroEdicao("O item escolhido não é um texto ou legenda.")
+        self.executar(RemoverClipe(clipe_id))
+
+    def importar_legendas_srt(self, caminho: str | Path) -> int:
+        try:
+            blocos = interpretar_srt(Path(caminho).read_text(encoding="utf-8-sig"))
+        except (OSError, UnicodeError, ValueError) as exc:
+            raise ErroEdicao(f"Não foi possível importar as legendas: {exc}") from exc
+        fps = float(self.projeto.config.fps)
+        for inicio_ms, fim_ms, conteudo in blocos:
+            self.salvar_elemento_texto(
+                tipo=TIPO_LEGENDA, conteudo=conteudo,
+                duracao_segundos=(fim_ms - inicio_ms) / 1000,
+                familia_fonte="Segoe UI", tamanho_fonte=48,
+                cor_texto="#ffffff", cor_fundo_texto="#99000000",
+                alinhamento_h="center", alinhamento_v="bottom",
+                inicio_frame=round(inicio_ms * fps / 1000),
+            )
+        return len(blocos)
+
+    def exportar_legendas_srt(self, caminho: str | Path) -> int:
+        legendas = [c for f in self.projeto.faixas for c in f.clipes
+                    if c.tipo == TIPO_LEGENDA]
+        try:
+            Path(caminho).write_text(
+                gerar_srt(legendas, self.projeto.config.fps), encoding="utf-8-sig")
+        except OSError as exc:
+            raise ErroEdicao(f"Não foi possível exportar as legendas: {exc}") from exc
+        return len(legendas)
+
     def configurar_mixagem_audio(self, volume_original: float, volume_adicionado: float) -> None:
         atual = self.projeto.mixagem_audio
         original = max(0.0, min(2.0, float(volume_original)))
@@ -180,6 +260,36 @@ class Controlador:
         if (original, adicionado) != (atual.volume_original, atual.volume_adicionado):
             self.executar(AlterarMixagemAudio(
                 volume_original=original, volume_adicionado=adicionado))
+
+    def aplicar_efeito(self, tipo: str, intensidade: int = 100) -> None:
+        if tipo not in TIPOS_EFEITO:
+            raise ErroEdicao(f"Efeito visual desconhecido: {tipo!r}.")
+        intensidade = max(0, min(100, int(intensidade)))
+        clipe = self._clipe_visual_selecionado()
+        efeitos = dict(clipe.efeitos)
+        if efeitos.get(tipo) == intensidade:
+            raise ErroEdicao("Esse efeito já está aplicado com essa intensidade.")
+        efeitos[tipo] = intensidade
+        self.executar(AlterarClipe(clipe.id, efeitos=efeitos))
+
+    def remover_efeito(self, tipo: str) -> None:
+        clipe = self._clipe_visual_selecionado()
+        if tipo not in clipe.efeitos:
+            raise ErroEdicao("O efeito selecionado não está aplicado a este clipe.")
+        efeitos = dict(clipe.efeitos)
+        del efeitos[tipo]
+        self.executar(AlterarClipe(clipe.id, efeitos=efeitos))
+
+    def _clipe_visual_selecionado(self) -> Clipe:
+        if len(self.selecao.ids) != 1:
+            raise ErroEdicao("Selecione somente um clipe visual para editar seus efeitos.")
+        try:
+            faixa, clipe = self.projeto.localizar_clipe(self.selecao.ids[0])
+        except KeyError as exc:
+            raise ErroEdicao("O clipe selecionado não foi encontrado.") from exc
+        if faixa.tipo != "video":
+            raise ErroEdicao("Efeitos visuais não podem ser aplicados a clipes de áudio.")
+        return clipe
 
     def aplicar_transicao(self, tipo: str, duracao_segundos: float) -> Transicao:
         faixa, origem, destino = self._clipes_para_transicao()

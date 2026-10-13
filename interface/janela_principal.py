@@ -26,6 +26,7 @@ from core.eventos import (
 from core.excecoes import ErroEdicao, ErroMovieMaker
 from interface.cabecalho import Cabecalho
 from interface.gerenciador_layouts import GerenciadorLayouts
+from interface.localizacao import traduzir_botoes
 from interface.menu_lateral import MenuLateral
 from interface.painel_ferramentas import PainelFerramentas
 from interface.painel_propriedades import PainelPropriedades
@@ -144,11 +145,37 @@ class JanelaPrincipal(QMainWindow):
             lambda tipo, duracao: self._tentar(lambda: self.c.aplicar_transicao(tipo, duracao)))
         self.painel.transicoes.remover_solicitado.connect(
             lambda transicao_id: self._tentar(lambda: self.c.remover_transicao(transicao_id)))
+        self.painel.efeitos.aplicar_solicitado.connect(
+            lambda tipo, intensidade: self._tentar(
+                lambda: self.c.aplicar_efeito(tipo, intensidade)))
+        self.painel.efeitos.remover_solicitado.connect(
+            lambda tipo: self._tentar(lambda: self.c.remover_efeito(tipo)))
+        self.painel.textos.salvar_solicitado.connect(
+            lambda dados: self._tentar(lambda: self.c.salvar_elemento_texto(**dados)))
+        self.painel.textos.remover_solicitado.connect(
+            lambda clipe_id: self._tentar(lambda: self.c.remover_elemento_texto(clipe_id)))
+        self.painel.textos.selecionar_solicitado.connect(
+            lambda clipe_id: self.c.selecionar([clipe_id]))
         self.painel.audio.importar_solicitado.connect(self._importar_audio)
         self.painel.audio.mixagem_alterada.connect(self.c.configurar_mixagem_audio)
         self.painel.audio.gravacao_concluida.connect(
             lambda caminho: self._iniciar_analise_midias([caminho], adicionar_na_timeline=True))
         self.painel.audio.erro.connect(self._mostrar_erro)
+        self.painel.audio.selecionar_solicitado.connect(
+            lambda clipe_id: self.c.selecionar([clipe_id]))
+        self.painel.audio.remover_solicitado.connect(
+            lambda clipe_id: self._tentar(lambda: self.c.remover_clipe(clipe_id)))
+        self.painel.audio.volume_clipe_alterado.connect(
+            lambda clipe_id, volume: self._tentar(
+                lambda: self.c.alterar_clipe(clipe_id, volume=volume)))
+        self.painel.legendas.salvar_solicitado.connect(
+            lambda dados: self._tentar(lambda: self.c.salvar_elemento_texto(**dados)))
+        self.painel.legendas.remover_solicitado.connect(
+            lambda clipe_id: self._tentar(lambda: self.c.remover_elemento_texto(clipe_id)))
+        self.painel.legendas.selecionar_solicitado.connect(
+            lambda clipe_id: self.c.selecionar([clipe_id]))
+        self.painel.legendas.importar_solicitado.connect(self._importar_legendas)
+        self.painel.legendas.exportar_solicitado.connect(self._exportar_legendas)
         self.painel.ajustes.layout_escolhido.connect(self._trocar_layout)
         self.painel.ajustes.inatividade_alterada.connect(self._alterar_inatividade)
         self.propriedades.nome_alterado.connect(lambda i, n: self._tentar(lambda: self.c.alterar_clipe(i, nome=n)))
@@ -169,10 +196,23 @@ class JanelaPrincipal(QMainWindow):
         e.assinar(SELECAO_ALTERADA, self._ao_selecao)
         e.assinar(PROJETO_ALTERADO, self._atualizar_audio)
         e.assinar(PROJETO_CARREGADO, self._atualizar_audio)
+        e.assinar(SELECAO_ALTERADA, self._atualizar_audio)
         e.assinar(PROJETO_ALTERADO, self._atualizar_transicoes)
         e.assinar(PROJETO_CARREGADO, self._atualizar_transicoes)
+        e.assinar(PROJETO_ALTERADO, self._atualizar_efeitos)
+        e.assinar(PROJETO_CARREGADO, self._atualizar_efeitos)
+        e.assinar(SELECAO_ALTERADA, self._atualizar_efeitos)
+        e.assinar(PROJETO_ALTERADO, self._atualizar_textos)
+        e.assinar(PROJETO_CARREGADO, self._atualizar_textos)
+        e.assinar(SELECAO_ALTERADA, self._atualizar_textos)
+        e.assinar(PROJETO_ALTERADO, self._atualizar_legendas)
+        e.assinar(PROJETO_CARREGADO, self._atualizar_legendas)
+        e.assinar(SELECAO_ALTERADA, self._atualizar_legendas)
         self._atualizar_audio()
         self._atualizar_transicoes()
+        self._atualizar_efeitos()
+        self._atualizar_textos()
+        self._atualizar_legendas()
 
     def _criar_atalhos(self) -> None:
         def atalho(seq: str, fn) -> None:
@@ -228,10 +268,14 @@ class JanelaPrincipal(QMainWindow):
         """True se pode prosseguir (salvou, descartou ou não havia alterações)."""
         if not self.c.gerenciador.modificado:
             return True
-        r = QMessageBox.question(
-            self, "Alterações não salvas", "O projeto tem alterações não salvas. Deseja salvá-las?",
-            QMessageBox.StandardButton.Save | QMessageBox.StandardButton.Discard | QMessageBox.StandardButton.Cancel,
-            QMessageBox.StandardButton.Save)
+        caixa = QMessageBox(QMessageBox.Icon.Question, "Alterações não salvas",
+                            "O projeto tem alterações não salvas. Deseja salvá-las?",
+                            QMessageBox.StandardButton.Save
+                            | QMessageBox.StandardButton.Discard
+                            | QMessageBox.StandardButton.Cancel, self)
+        caixa.setDefaultButton(QMessageBox.StandardButton.Save)
+        traduzir_botoes(caixa)
+        r = QMessageBox.StandardButton(caixa.exec())
         if r == QMessageBox.StandardButton.Cancel:
             return False
         if r == QMessageBox.StandardButton.Save:
@@ -385,6 +429,39 @@ class JanelaPrincipal(QMainWindow):
             self.config.definir("diretorios.ultima_importacao", str(Path(arquivos[0]).parent))
             self._iniciar_analise_midias(arquivos, adicionar_na_timeline=True)
 
+    def _importar_legendas(self) -> None:
+        inicio = self.config.obter("diretorios.ultima_importacao") or str(Path.home())
+        arquivo, _ = QFileDialog.getOpenFileName(
+            self, "Importar legendas", inicio, "Legendas SubRip (*.srt)")
+        if not arquivo:
+            return
+        self.config.definir("diretorios.ultima_importacao", str(Path(arquivo).parent))
+        try:
+            quantidade = self.c.importar_legendas_srt(arquivo)
+        except ErroEdicao as exc:
+            self._mostrar_erro(str(exc))
+            return
+        self.statusBar().showMessage(f"{quantidade} legenda(s) importada(s).", 5000)
+
+    def _exportar_legendas(self) -> None:
+        inicio = self.config.obter("diretorios.ultima_exportacao") or str(Path.home())
+        arquivo, _ = QFileDialog.getSaveFileName(
+            self, "Exportar legendas", str(Path(inicio) / "legendas.srt"),
+            "Legendas SubRip (*.srt)")
+        if not arquivo:
+            return
+        destino = Path(arquivo)
+        if destino.suffix.lower() != ".srt":
+            destino = destino.with_suffix(".srt")
+        try:
+            quantidade = self.c.exportar_legendas_srt(destino)
+        except ErroEdicao as exc:
+            self._mostrar_erro(str(exc))
+            return
+        self.config.definir("diretorios.ultima_exportacao", str(destino.parent))
+        self.statusBar().showMessage(
+            f"{quantidade} legenda(s) exportada(s) para {destino}", 5000)
+
     def _fim_importacao(self, tarefa: TarefaAnaliseMidias) -> None:
         self._tarefas.remove(tarefa)
         tarefa.deleteLater()
@@ -402,9 +479,19 @@ class JanelaPrincipal(QMainWindow):
         mixagem = self.c.projeto.mixagem_audio
         self.painel.audio.definir_mixagem(
             mixagem.volume_original, mixagem.volume_adicionado)
+        self.painel.audio.atualizar(self.c.projeto, list(self.c.selecao.ids))
 
     def _atualizar_transicoes(self) -> None:
         self.painel.transicoes.atualizar(self.c.projeto)
+
+    def _atualizar_efeitos(self) -> None:
+        self.painel.efeitos.atualizar(self.c.projeto, list(self.c.selecao.ids))
+
+    def _atualizar_textos(self) -> None:
+        self.painel.textos.atualizar(self.c.projeto, list(self.c.selecao.ids))
+
+    def _atualizar_legendas(self) -> None:
+        self.painel.legendas.atualizar(self.c.projeto, list(self.c.selecao.ids))
 
     # ---- painéis ---------------------------------------------------------------------------------------------
     def _sincronizar_menu_com_layout(self) -> None:

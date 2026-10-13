@@ -43,6 +43,12 @@ QSS = f"""
 QMainWindow, QWidget#raiz {{ background: {COR_FUNDO}; }}
 QToolTip {{ background: {COR_PAINEL_ALT}; color: {COR_TEXTO}; border: 1px solid {COR_BORDA}; padding: 4px; }}
 
+QMessageBox {{ background: {COR_PAINEL}; }}
+QMessageBox QLabel {{ background: transparent; color: {COR_TEXTO}; }}
+QMessageBox QPushButton {{ min-width: 92px; background: {COR_PAINEL_ALT}; color: {COR_TEXTO}; border: 1px solid {COR_BORDA}; border-radius: 6px; padding: 6px 12px; }}
+QMessageBox QPushButton:hover {{ border-color: {COR_DESTAQUE}; background: #2d3440; }}
+QMessageBox QPushButton:default {{ background: {COR_DESTAQUE}; border-color: {COR_DESTAQUE}; color: white; font-weight: 600; }}
+
 QFrame#cabecalho {{ background: {COR_PAINEL}; border-bottom: 1px solid {COR_BORDA}; }}
 QLabel#tituloApp {{ font-weight: 700; font-size: 14px; }}
 QLabel#nomeProjeto {{ color: {COR_TEXTO_SUAVE}; }}

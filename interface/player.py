@@ -1,14 +1,4 @@
-"""Player central (REQ-007, 19.5).
-
-Nesta etapa: controles de transporte e navegação sincronizados com a timeline
-via ``Controlador``. A imagem vem do motor MLT quando disponível; sem motor, a
-área mostra o quadro vazio com a proporção do projeto e uma mensagem clara.
-
-NÃO implementado ainda: reprodução de áudio, seleção/movimentação de elementos
-diretamente na imagem, exibição de transições/efeitos (Etapas 3 e 5).
-Obter quadros no timer da interface é uma solução provisória; a reprodução
-definitiva deve usar um consumidor MLT em thread própria.
-"""
+"""Player central com pré-visualização de imagem e áudio da timeline (REQ-007)."""
 from __future__ import annotations
 
 import logging
@@ -77,6 +67,7 @@ class Player(QFrame):
         self._atualizando = False
         self._timer = QTimer(self)
         self._timer.timeout.connect(self._avancar_reproducao)
+        self._atualizando_pelo_audio = False
 
         lay = QVBoxLayout(self)
         lay.setContentsMargins(0, 0, 0, 0)
@@ -140,11 +131,15 @@ class Player(QFrame):
             self._btn_play.setText("⏸")
             fps = float(self._c.projeto.config.fps)
             self._timer.start(max(1, int(1000 / fps)))
+            self._iniciar_audio(self._c.posicao)
 
     def _pausar(self) -> None:
         self._tocando = False
         self._timer.stop()
         self._btn_play.setText("▶")
+        motor = self._c.motor
+        if motor is not None:
+            motor.parar_audio_preview()
 
     def pausar(self) -> None:
         """Pausa sem alterar a posição atual (usado antes da exportação)."""
@@ -158,7 +153,15 @@ class Player(QFrame):
         if self._c.posicao >= self._c.projeto.duracao_frames:
             self._pausar()
             return
-        self._c.ir_para(self._c.posicao + 1)
+        motor = self._c.motor
+        posicao_audio = motor.posicao_audio_preview() if motor is not None else None
+        destino = self._c.posicao + 1 if posicao_audio is None else posicao_audio
+        if destino != self._c.posicao:
+            self._atualizando_pelo_audio = True
+            try:
+                self._c.ir_para(destino)
+            finally:
+                self._atualizando_pelo_audio = False
 
     # ---- sincronização com o modelo -----------------------------------------------------------------
     def _ao_projeto(self) -> None:
@@ -185,6 +188,11 @@ class Player(QFrame):
             f"{formatar_timecode(frame, proj.config.fps)} / "
             f"{formatar_timecode(proj.duracao_frames, proj.config.fps)}")
         self._desenhar_quadro(frame)
+        if self._tocando and not self._atualizando_pelo_audio:
+            motor = self._c.motor
+            posicao_audio = motor.posicao_audio_preview() if motor is not None else None
+            if posicao_audio is None or abs(posicao_audio - frame) > 2:
+                self._iniciar_audio(frame)
 
     def _ao_mover_slider(self, valor: int) -> None:
         if not self._atualizando:
@@ -209,3 +217,8 @@ class Player(QFrame):
         img = QImage(quadro.dados, quadro.largura, quadro.altura, quadro.largura * 4,
                      QImage.Format.Format_RGBA8888).copy()
         self.area.definir_imagem(img)
+
+    def _iniciar_audio(self, frame: int) -> None:
+        motor = self._c.motor
+        if motor is not None and not motor.iniciar_audio_preview(frame):
+            _log.error("O motor multimídia não conseguiu iniciar o áudio da pré-visualização.")

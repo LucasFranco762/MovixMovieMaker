@@ -5,7 +5,10 @@ import unittest
 from pathlib import Path
 
 from core.configuracoes import ArmazenamentoJson, Configuracoes
-from core.constantes import MAX_VERSOES_HISTORICO, TIPO_VIDEO, TRANSICAO_DISSOLVER
+from core.constantes import (
+    EFEITO_SEPIA, MAX_VERSOES_HISTORICO, TIPO_TEXTO, TIPO_VIDEO, TIPOS_TRANSICAO,
+    TRANSICAO_DISSOLVER, VERSAO_FORMATO_PROJETO,
+)
 from core.excecoes import ErroSalvamento, ProjetoIncompativelError, ProjetoInvalidoError
 from editor.clipes import criar_clipe
 from projetos import recuperacao
@@ -63,6 +66,28 @@ class TesteSerializacao(unittest.TestCase):
                          (0.25, 1.4))
         self.assertEqual((q.faixas[0].volume, q.faixas[0].clipes[0].volume), (0.8, 0.6))
 
+    def test_efeitos_do_clipe_sao_persistidos(self):
+        p = projeto_exemplo()
+        p.faixas[0].clipes[0].efeitos = {EFEITO_SEPIA: 65}
+        q = Projeto.de_dict(json.loads(json.dumps(p.para_dict())))
+        self.assertEqual(q.faixas[0].clipes[0].efeitos, {EFEITO_SEPIA: 65})
+
+    def test_clipe_de_texto_e_persistido(self):
+        p = projeto_exemplo()
+        texto = criar_clipe(p.midias["m1"], 400)
+        texto.midia_id = ""
+        texto.tipo = TIPO_TEXTO
+        texto.conteudo = "Créditos"
+        texto.familia_fonte = "Arial"
+        texto.tamanho_fonte = 72
+        texto.alinhamento_v = "bottom"
+        p.faixas[0].clipes.append(texto)
+        q = Projeto.de_dict(json.loads(json.dumps(p.para_dict())))
+        restaurado = q.faixas[0].clipes[-1]
+        self.assertEqual(
+            (restaurado.tipo, restaurado.conteudo, restaurado.tamanho_fonte),
+            (TIPO_TEXTO, "Créditos", 72))
+
     def test_transicao_e_persistida(self):
         p = projeto_exemplo()
         primeiro = p.faixas[0].clipes[0]
@@ -72,6 +97,11 @@ class TesteSerializacao(unittest.TestCase):
             "t1", p.faixas[0].id, primeiro.id, segundo.id, TRANSICAO_DISSOLVER, 25))
         q = Projeto.de_dict(json.loads(json.dumps(p.para_dict())))
         self.assertEqual(q.transicoes, p.transicoes)
+
+    def test_todos_os_tipos_de_transicao_sao_validos(self):
+        for tipo in TIPOS_TRANSICAO:
+            transicao = Transicao("t1", "f1", "c1", "c2", tipo, 15)
+            self.assertEqual(transicao.tipo, tipo)
 
     def test_projeto_versao_1_migra_com_mixagem_padrao(self):
         dados = projeto_exemplo().para_dict()
@@ -83,10 +113,18 @@ class TesteSerializacao(unittest.TestCase):
             for clipe in faixa["clipes"]:
                 clipe.pop("volume")
         migrado = Projeto.de_dict(dados)
-        self.assertEqual(migrado.versao_formato, 3)
+        self.assertEqual(migrado.versao_formato, VERSAO_FORMATO_PROJETO)
         self.assertEqual((migrado.mixagem_audio.volume_original,
                           migrado.mixagem_audio.volume_adicionado), (1.0, 1.0))
         self.assertEqual(migrado.faixas[0].clipes[0].volume, 1.0)
+        self.assertEqual(migrado.faixas[0].clipes[0].efeitos, {})
+
+    def test_projeto_versao_4_migra_efeitos_para_intensidade_total(self):
+        dados = projeto_exemplo().para_dict()
+        dados["versao_formato"] = 4
+        dados["faixas"][0]["clipes"][0]["efeitos"] = [EFEITO_SEPIA]
+        migrado = Projeto.de_dict(dados)
+        self.assertEqual(migrado.faixas[0].clipes[0].efeitos, {EFEITO_SEPIA: 100})
 
 
 class TesteSalvamento(unittest.TestCase):

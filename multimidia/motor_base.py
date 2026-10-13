@@ -34,6 +34,17 @@ class MotorMultimidia(ABC):
     @abstractmethod
     def obter_frame(self, posicao: int) -> FrameRGBA | None: ...
 
+    def iniciar_audio_preview(self, posicao: int) -> bool:
+        """Inicia o áudio da composição. Retorna ``False`` se não houver suporte."""
+        return False
+
+    def parar_audio_preview(self) -> None:
+        """Interrompe o áudio de pré-visualização, quando disponível."""
+
+    def posicao_audio_preview(self) -> int | None:
+        """Posição conduzida pelo áudio ou ``None`` quando ele não está ativo."""
+        return None
+
     @abstractmethod
     def exportar(self, destino: str, **opcoes: object) -> None: ...
 

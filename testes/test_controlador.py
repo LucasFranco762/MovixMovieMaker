@@ -3,7 +3,10 @@ import unittest
 from pathlib import Path
 
 from core.configuracoes import ArmazenamentoJson, Configuracoes
-from core.constantes import FAIXA_AUDIO, TIPO_AUDIO, TIPO_VIDEO, TRANSICAO_DISSOLVER
+from core.constantes import (
+    EFEITO_DESFOQUE, EFEITO_SEPIA, FAIXA_AUDIO, TIPO_AUDIO, TIPO_VIDEO,
+    TIPO_TEXTO, TRANSICAO_DISSOLVER,
+)
 from core.controlador import Controlador
 from core.eventos import PROJETO_ALTERADO, PROJETO_CARREGADO, SELECAO_ALTERADA
 from core.excecoes import ErroEdicao
@@ -102,6 +105,17 @@ class TesteControlador(unittest.TestCase):
         self.c.desfazer()
         self.assertEqual(self.c.projeto.mixagem_audio.volume_original, 1.0)
 
+    def test_alterar_volume_e_remover_clipe_de_audio(self):
+        self.c.adicionar_midia_na_timeline("ma")
+        clipe = self.c.projeto.faixas[1].clipes[0]
+        self.c.alterar_clipe(clipe.id, volume=0.35)
+        self.assertEqual(clipe.volume, 0.35)
+        self.c.remover_clipe(clipe.id)
+        with self.assertRaises(KeyError):
+            self.c.projeto.localizar_clipe(clipe.id)
+        self.c.desfazer()
+        self.assertEqual(self.c.projeto.localizar_clipe(clipe.id)[1].volume, 0.35)
+
     def test_aplicar_transicao_pela_selecao_e_remover(self):
         self.c.adicionar_midia_na_timeline("mv", 0)
         self.c.adicionar_midia_na_timeline("mv", 90)
@@ -119,6 +133,62 @@ class TesteControlador(unittest.TestCase):
         self.c.ir_para(90)
         self.c.aplicar_transicao(TRANSICAO_DISSOLVER, 0.5)
         self.assertEqual(self.c.projeto.faixas[0].clipes[1].inicio, 75)
+
+    def test_aplicar_remover_e_desfazer_efeitos_no_clipe_selecionado(self):
+        self.c.adicionar_midia_na_timeline("mv")
+        clipe = self.c.projeto.faixas[0].clipes[0]
+        self.c.selecionar([clipe.id])
+        self.c.aplicar_efeito(EFEITO_SEPIA, 65)
+        self.c.aplicar_efeito(EFEITO_DESFOQUE, 80)
+        self.assertEqual(clipe.efeitos, {EFEITO_SEPIA: 65, EFEITO_DESFOQUE: 80})
+        with self.assertRaises(ErroEdicao):
+            self.c.aplicar_efeito(EFEITO_SEPIA, 65)
+        self.c.aplicar_efeito(EFEITO_SEPIA, 40)
+        self.assertEqual(clipe.efeitos[EFEITO_SEPIA], 40)
+        self.c.remover_efeito(EFEITO_SEPIA)
+        self.assertEqual(clipe.efeitos, {EFEITO_DESFOQUE: 80})
+        self.c.desfazer()
+        self.assertEqual(clipe.efeitos, {EFEITO_SEPIA: 40, EFEITO_DESFOQUE: 80})
+
+    def test_efeito_exige_um_clipe_visual(self):
+        with self.assertRaises(ErroEdicao):
+            self.c.aplicar_efeito(EFEITO_SEPIA)
+
+    def test_criar_editar_remover_e_desfazer_texto(self):
+        texto = self.c.salvar_elemento_texto(
+            tipo=TIPO_TEXTO, conteudo="Meu título", duracao_segundos=2,
+            familia_fonte="Segoe UI", tamanho_fonte=64, cor_texto="#ffffff",
+            cor_fundo_texto="#00000000", alinhamento_h="center", alinhamento_v="middle")
+        self.assertEqual((texto.tipo, texto.duracao, texto.conteudo),
+                         (TIPO_TEXTO, 60, "Meu título"))
+        self.assertEqual(self.c.selecao.ids, (texto.id,))
+        faixa_texto, _ = self.c.projeto.localizar_clipe(texto.id)
+        self.assertNotEqual(faixa_texto.id, self.c.projeto.faixas[0].id)
+        self.c.salvar_elemento_texto(
+            tipo=TIPO_TEXTO, conteudo="Título alterado", duracao_segundos=3,
+            familia_fonte="Arial", tamanho_fonte=80, cor_texto="#ff0000",
+            cor_fundo_texto="#00000000", alinhamento_h="left", alinhamento_v="top",
+            clipe_id=texto.id)
+        self.assertEqual((texto.conteudo, texto.duracao, texto.alinhamento_v),
+                         ("Título alterado", 90, "top"))
+        self.c.remover_elemento_texto(texto.id)
+        with self.assertRaises(KeyError):
+            self.c.projeto.localizar_clipe(texto.id)
+        self.c.desfazer()
+        self.assertEqual(self.c.projeto.localizar_clipe(texto.id)[1].conteudo, "Título alterado")
+
+    def test_texto_vazio_e_rejeitado(self):
+        with self.assertRaises(ErroEdicao):
+            self.c.salvar_elemento_texto(
+                tipo=TIPO_TEXTO, conteudo="  ", duracao_segundos=2,
+                familia_fonte="Arial", tamanho_fonte=48, cor_texto="#ffffff",
+                cor_fundo_texto="#00000000", alinhamento_h="center",
+                alinhamento_v="middle")
+        self.c.adicionar_midia_na_timeline("ma")
+        clipe_audio = self.c.projeto.faixas[1].clipes[0]
+        self.c.selecionar([clipe_audio.id])
+        with self.assertRaises(ErroEdicao):
+            self.c.aplicar_efeito(EFEITO_SEPIA)
 
 
 if __name__ == "__main__":

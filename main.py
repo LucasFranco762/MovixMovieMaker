@@ -41,6 +41,8 @@ def main() -> int:
     app = QApplication(sys.argv)
     app.setApplicationName(NOME_APLICATIVO)
     app.setOrganizationName(ORGANIZACAO)
+    from interface.localizacao import instalar_portugues_brasileiro
+    tradutor_qt = instalar_portugues_brasileiro(app)
     caminho_logo = Path(__file__).resolve().parent / ARQUIVO_LOGO
     if caminho_logo.is_file():
         app.setWindowIcon(QIcon(str(caminho_logo)))
@@ -78,6 +80,7 @@ def main() -> int:
     # segurança solicitada mantém a splash por mais dois segundos.
     QTimer.singleShot(ATRASO_APOS_CARREGAMENTO_MS, revelar_janela)
     codigo = app.exec()
+    del tradutor_qt
     del filtro_cursor_botoes
     controlador.encerrar()
     return codigo

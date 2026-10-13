@@ -10,7 +10,9 @@ from abc import ABC, abstractmethod
 from dataclasses import replace
 from typing import Any
 
-from core.constantes import FAIXA_VIDEO, LIMITE_HISTORICO_COMANDOS
+from core.constantes import (
+    FAIXA_VIDEO, LIMITE_HISTORICO_COMANDOS, TIPOS_EFEITO, TIPO_LEGENDA, TIPO_TEXTO,
+)
 from core.excecoes import ErroEdicao
 from editor.clipes import calcular_divisao
 from editor.faixas import exigir_faixa_editavel, exigir_posicao_livre
@@ -205,7 +207,7 @@ class DividirClipe(Comando):
         dur_esq, entrada_dir, dur_dir = calcular_divisao(clipe, self.frame)
         self._faixa_id, self._duracao_original = faixa.id, clipe.duracao
         direita = replace(clipe, id=self.novo_clipe_id, inicio=self.frame,
-                          duracao=dur_dir, entrada=entrada_dir)
+                          duracao=dur_dir, entrada=entrada_dir, efeitos=dict(clipe.efeitos))
         clipe.duracao = dur_esq
         faixa.clipes.append(direita)
         faixa.clipes.sort(key=lambda c: c.inicio)
@@ -219,9 +221,9 @@ class DividirClipe(Comando):
 
 
 class AlterarClipe(Comando):
-    """Altera propriedades não temporais do clipe (nome, cor)."""
+    """Altera propriedades não temporais do clipe."""
     descricao = "Alterar clipe"
-    CAMPOS = ("nome", "cor", "volume")
+    CAMPOS = ("nome", "cor", "volume", "efeitos")
 
     def __init__(self, clipe_id: str, **alteracoes: Any) -> None:
         invalidos = set(alteracoes) - set(self.CAMPOS)
@@ -231,6 +233,17 @@ class AlterarClipe(Comando):
         self.novos = dict(alteracoes)
         if "volume" in self.novos:
             self.novos["volume"] = max(0.0, min(2.0, float(self.novos["volume"])))
+        if "efeitos" in self.novos:
+            if not isinstance(self.novos["efeitos"], dict):
+                raise ErroEdicao("A lista de efeitos do clipe é inválida.")
+            self.novos["efeitos"] = {
+                tipo: int(intensidade)
+                for tipo, intensidade in self.novos["efeitos"].items()
+            }
+            desconhecidos = set(self.novos["efeitos"]) - set(TIPOS_EFEITO)
+            intensidades = self.novos["efeitos"].values()
+            if desconhecidos or any(not 0 <= valor <= 100 for valor in intensidades):
+                raise ErroEdicao("A lista de efeitos do clipe é inválida.")
         self.antigos: dict[str, Any] = {}
 
     def executar(self, projeto: Projeto) -> None:
@@ -243,6 +256,46 @@ class AlterarClipe(Comando):
         _, clipe = projeto.localizar_clipe(self.clipe_id)
         for k, v in self.antigos.items():
             setattr(clipe, k, v)
+
+
+class AlterarElementoTexto(Comando):
+    """Altera conteúdo, estilo ou duração de um texto/legenda."""
+
+    descricao = "Alterar texto"
+    CAMPOS = (
+        "conteudo", "duracao", "familia_fonte", "tamanho_fonte", "cor_texto",
+        "cor_fundo_texto", "alinhamento_h", "alinhamento_v",
+    )
+
+    def __init__(self, clipe_id: str, **alteracoes: Any) -> None:
+        invalidos = set(alteracoes) - set(self.CAMPOS)
+        if invalidos:
+            raise ErroEdicao(f"Propriedades de texto inválidas: {sorted(invalidos)}")
+        if "conteudo" in alteracoes and not str(alteracoes["conteudo"]).strip():
+            raise ErroEdicao("Digite o conteúdo do texto.")
+        self.clipe_id = clipe_id
+        self.novos = dict(alteracoes)
+        if "duracao" in self.novos:
+            self.novos["duracao"] = int(self.novos["duracao"])
+        if "tamanho_fonte" in self.novos:
+            self.novos["tamanho_fonte"] = max(8, min(300, int(self.novos["tamanho_fonte"])))
+        self.antigos: dict[str, Any] = {}
+
+    def executar(self, projeto: Projeto) -> None:
+        faixa, clipe = projeto.localizar_clipe(self.clipe_id)
+        if clipe.tipo not in (TIPO_TEXTO, TIPO_LEGENDA):
+            raise ErroEdicao("O clipe selecionado não é um texto ou legenda.")
+        exigir_faixa_editavel(faixa)
+        duracao = self.novos.get("duracao", clipe.duracao)
+        exigir_posicao_livre(faixa, clipe.inicio, duracao, frozenset({clipe.id}))
+        self.antigos = {campo: getattr(clipe, campo) for campo in self.novos}
+        for campo, valor in self.novos.items():
+            setattr(clipe, campo, valor)
+
+    def desfazer(self, projeto: Projeto) -> None:
+        _, clipe = projeto.localizar_clipe(self.clipe_id)
+        for campo, valor in self.antigos.items():
+            setattr(clipe, campo, valor)
 
 
 class AlterarMixagemAudio(Comando):

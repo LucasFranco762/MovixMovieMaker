@@ -3,8 +3,8 @@
 O modelo é independente de interface e de motor multimídia. Posições e durações
 são sempre frames inteiros. Os arquivos originais são apenas referenciados.
 
-Efeitos, keyframes, textos e legendas ainda serão ampliados. O formato é
-versionado para permitir essa evolução sem perder projetos anteriores.
+O formato é versionado para permitir a evolução do editor sem perder projetos
+criados em versões anteriores.
 """
 from __future__ import annotations
 
@@ -23,8 +23,11 @@ from core.constantes import (
     FPS_PADRAO,
     LARGURA_PADRAO,
     TAXA_AMOSTRAGEM_PADRAO,
+    TIPOS_EFEITO,
     TIPOS_MIDIA,
     TIPOS_TRANSICAO,
+    TIPO_LEGENDA,
+    TIPO_TEXTO,
     VERSAO_FORMATO_PROJETO,
 )
 from core.excecoes import ProjetoIncompativelError, ProjetoInvalidoError
@@ -75,9 +78,32 @@ class Clipe:
     cor: str | None = None            # None = cor padrão da categoria
     grupo_id: str | None = None
     volume: float = 1.0
+    efeitos: dict[str, int] = field(default_factory=dict)  # tipo -> intensidade (0 a 100)
+    conteudo: str = ""                 # usado por texto e legenda
+    familia_fonte: str = "Segoe UI"
+    tamanho_fonte: int = 48
+    cor_texto: str = "#ffffff"
+    cor_fundo_texto: str = "#00000000"
+    alinhamento_h: str = "center"
+    alinhamento_v: str = "middle"
 
     def __post_init__(self) -> None:
         self.volume = max(0.0, min(2.0, float(self.volume)))
+        if not isinstance(self.efeitos, dict):
+            raise ValueError("Os efeitos do clipe precisam conter suas intensidades.")
+        self.efeitos = {tipo: int(intensidade) for tipo, intensidade in self.efeitos.items()}
+        desconhecidos = set(self.efeitos) - set(TIPOS_EFEITO)
+        if desconhecidos:
+            raise ValueError(f"Efeito visual desconhecido: {sorted(desconhecidos)!r}")
+        if any(not 0 <= intensidade <= 100 for intensidade in self.efeitos.values()):
+            raise ValueError("A intensidade dos efeitos deve estar entre 0 e 100.")
+        self.tamanho_fonte = max(8, min(300, int(self.tamanho_fonte)))
+        if self.tipo in (TIPO_TEXTO, TIPO_LEGENDA) and not self.conteudo.strip():
+            raise ValueError("Um texto ou legenda não pode ter conteúdo vazio.")
+        if self.alinhamento_h not in ("left", "center", "right"):
+            raise ValueError(f"Alinhamento horizontal inválido: {self.alinhamento_h!r}")
+        if self.alinhamento_v not in ("top", "middle", "bottom"):
+            raise ValueError(f"Alinhamento vertical inválido: {self.alinhamento_v!r}")
 
     @property
     def fim(self) -> int:
@@ -265,4 +291,14 @@ def _migrar(dados: dict[str, Any], versao: int) -> dict[str, Any]:
                 clipe.setdefault("volume", 1.0)
     if versao < 3:
         dados.setdefault("transicoes", [])
+    if versao < 4:
+        for faixa in dados.get("faixas", []):
+            for clipe in faixa.get("clipes", []):
+                clipe.setdefault("efeitos", [])
+    if versao < 5:
+        for faixa in dados.get("faixas", []):
+            for clipe in faixa.get("clipes", []):
+                efeitos = clipe.get("efeitos", [])
+                if isinstance(efeitos, list):
+                    clipe["efeitos"] = {tipo: 100 for tipo in efeitos}
     return dados
